@@ -1,0 +1,475 @@
+diff --git a/include/aquamarine/allocator/Allocator.hpp b/include/aquamarine/allocator/Allocator.hpp
+index 2dc1ee5..48e9b81 100644
+--- a/include/aquamarine/allocator/Allocator.hpp
++++ b/include/aquamarine/allocator/Allocator.hpp
+@@ -17,6 +17,7 @@ namespace Aquamarine {
+     enum eAllocatorType {
+         AQ_ALLOCATOR_TYPE_GBM = 0,
+         AQ_ALLOCATOR_TYPE_DRM_DUMB,
++        AQ_ALLOCATOR_TYPE_DMA_HEAP,
+     };
+ 
+     class IAllocator {
+diff --git a/include/aquamarine/allocator/DMAHeap.hpp b/include/aquamarine/allocator/DMAHeap.hpp
+new file mode 100644
+index 0000000..f254002
+--- /dev/null
++++ b/include/aquamarine/allocator/DMAHeap.hpp
+@@ -0,0 +1,57 @@
++#pragma once
++
++#include "Allocator.hpp"
++#include <string>
++
++namespace Aquamarine {
++    class CDMAHeapAllocator;
++    class CBackend;
++    class CSwapchain;
++
++    // Linear 32bpp buffers from a Linux DMA-BUF heap (e.g. Qualcomm's
++    // /dev/dma_heap/qcom,display). Used as KMS scanout targets on Android GKI
++    // devices where the GPU (KGSL) is not a DRM device and GBM cannot allocate
++    // display-importable buffers. Both the GPU (EGL dma-buf import) and the
++    // display controller (PRIME import) consume these buffers.
++    class CDMAHeapBuffer : public IBuffer {
++      public:
++        virtual ~CDMAHeapBuffer();
++
++        virtual eBufferCapability caps();
++        virtual eBufferType       type();
++        virtual void              update(const Hyprutils::Math::CRegion& damage);
++        virtual bool              isSynchronous();
++        virtual bool              good();
++        virtual SDMABUFAttrs      dmabuf();
++
++      private:
++        CDMAHeapBuffer(const SAllocatorBufferParams& params, Hyprutils::Memory::CWeakPointer<CDMAHeapAllocator> allocator_);
++
++        Hyprutils::Memory::CWeakPointer<CDMAHeapAllocator> allocator;
++        SDMABUFAttrs                                       attrs{.success = false};
++
++        friend class CDMAHeapAllocator;
++    };
++
++    class CDMAHeapAllocator : public IAllocator {
++      public:
++        ~CDMAHeapAllocator();
++        static Hyprutils::Memory::CSharedPointer<CDMAHeapAllocator> create(Hyprutils::Memory::CWeakPointer<CBackend> backend_, const std::string& heapPath);
++
++        virtual Hyprutils::Memory::CSharedPointer<IBuffer>  acquire(const SAllocatorBufferParams& params, Hyprutils::Memory::CSharedPointer<CSwapchain> swapchain_);
++        virtual Hyprutils::Memory::CSharedPointer<CBackend> getBackend();
++        virtual int                                         drmFD();
++        virtual eAllocatorType                              type();
++
++        Hyprutils::Memory::CWeakPointer<CDMAHeapAllocator> self;
++
++      private:
++        CDMAHeapAllocator(int heapFD_, Hyprutils::Memory::CWeakPointer<CBackend> backend_, std::string heapPath_);
++
++        int                                      heapFD = -1;
++        std::string                              heapPath;
++        Hyprutils::Memory::CWeakPointer<CBackend> backend;
++
++        friend class CDMAHeapBuffer;
++    };
++};
+diff --git a/include/aquamarine/backend/DRM.hpp b/include/aquamarine/backend/DRM.hpp
+index 281f13f..29f9942 100644
+--- a/include/aquamarine/backend/DRM.hpp
++++ b/include/aquamarine/backend/DRM.hpp
+@@ -119,6 +119,10 @@ namespace Aquamarine {
+ 
+         uint64_t                                     type      = 0;
+         uint32_t                                     id        = 0;
++        // AQ_DRM_SPLIT_PRIMARY: overlay plane that scans out the right half of this
++        // primary plane's FB. Qualcomm SDE dual-LM panels underrun when a single
++        // pipe fetches the full width, so the FB is split across two pipes.
++        Hyprutils::Memory::CSharedPointer<SDRMPlane> splitPartner;
+         uint32_t                                     initialID = 0;
+ 
+         Hyprutils::Memory::CSharedPointer<CDRMFB>    front /* currently displaying */, back /* submitted */, last /* keep just in case */;
+diff --git a/include/aquamarine/backend/drm/Atomic.hpp b/include/aquamarine/backend/drm/Atomic.hpp
+index 735f95d..642ada5 100644
+--- a/include/aquamarine/backend/drm/Atomic.hpp
++++ b/include/aquamarine/backend/drm/Atomic.hpp
+@@ -45,7 +45,10 @@ namespace Aquamarine {
+         SAsyncResult submitAsync(int drmFD, uint32_t flags, uint64_t commitID) noexcept;
+         void         planeProps(Hyprutils::Memory::CSharedPointer<SDRMPlane> plane, Hyprutils::Memory::CSharedPointer<CDRMFB> fb, uint32_t crtc, Hyprutils::Math::Vector2D pos,
+                                 eOutputColorRange colorRange = AQ_OUTPUT_COLOR_RANGE_AUTO);
++        void         planePropsRect(Hyprutils::Memory::CSharedPointer<SDRMPlane> plane, Hyprutils::Memory::CSharedPointer<CDRMFB> fb, uint32_t crtc,
++                                    Hyprutils::Math::Vector2D pos, eOutputColorRange colorRange, uint32_t srcX, uint32_t srcW);
+         void         planePropsPos(Hyprutils::Memory::CSharedPointer<SDRMPlane> plane, Hyprutils::Math::Vector2D pos);
++        void         addExtraConnectorProps(Hyprutils::Memory::CSharedPointer<SDRMConnector> connector);
+ 
+         void         rollback(SDRMConnectorCommitData& data);
+         void         apply(SDRMConnectorCommitData& data);
+diff --git a/src/allocator/DMAHeap.cpp b/src/allocator/DMAHeap.cpp
+new file mode 100644
+index 0000000..4318ae8
+--- /dev/null
++++ b/src/allocator/DMAHeap.cpp
+@@ -0,0 +1,134 @@
++// Adapted from the omarchy-android KGSL buffer pipeline (BlackFireAlex), for KMS scanout.
++#include <aquamarine/allocator/DMAHeap.hpp>
++#include <aquamarine/backend/Backend.hpp>
++#include "FormatUtils.hpp"
++
++#include <drm_fourcc.h>
++#include <fcntl.h>
++#include <linux/dma-heap.h>
++#include <sys/ioctl.h>
++#include <unistd.h>
++
++#include <cerrno>
++#include <cstring>
++#include <format>
++
++using namespace Aquamarine;
++using namespace Hyprutils::Memory;
++#define SP CSharedPointer
++
++static bool is32bpp(uint32_t f) {
++    switch (f) {
++        case DRM_FORMAT_XRGB8888:
++        case DRM_FORMAT_ARGB8888:
++        case DRM_FORMAT_XBGR8888:
++        case DRM_FORMAT_ABGR8888: return true;
++        default: return false;
++    }
++}
++
++Aquamarine::CDMAHeapBuffer::CDMAHeapBuffer(const SAllocatorBufferParams& params, CWeakPointer<CDMAHeapAllocator> allocator_) : allocator(allocator_) {
++    if (!allocator || params.size.x <= 0 || params.size.y <= 0)
++        return;
++
++    const uint32_t format = params.format == DRM_FORMAT_INVALID ? DRM_FORMAT_XRGB8888 : params.format;
++    if (!is32bpp(format)) {
++        allocator->backend->log(AQ_LOG_ERROR, std::format("DMAHeap: unsupported format {}", fourccToName(format)));
++        return;
++    }
++
++    const uint64_t width  = (uint64_t)params.size.x;
++    const uint64_t height = (uint64_t)params.size.y;
++    // Linear, 64-byte aligned rows: accepted by both KGSL and the SDE display importer.
++    const uint64_t stride = (width * 4U + 63U) & ~63ULL;
++    const uint64_t length = (stride * height + 4095U) & ~4095ULL;
++
++    dma_heap_allocation_data allocation{.len = length, .fd = 0, .fd_flags = O_RDWR | O_CLOEXEC, .heap_flags = 0};
++    if (ioctl(allocator->heapFD, DMA_HEAP_IOCTL_ALLOC, &allocation) < 0) {
++        allocator->backend->log(AQ_LOG_ERROR, std::format("DMAHeap: allocation of {} bytes failed: {}", length, strerror(errno)));
++        return;
++    }
++
++    attrs.success    = true;
++    attrs.size       = params.size;
++    attrs.format     = format;
++    attrs.modifier   = DRM_FORMAT_MOD_LINEAR;
++    attrs.planes     = 1;
++    attrs.fds[0]     = (int)allocation.fd;
++    attrs.offsets[0] = 0;
++    attrs.strides[0] = (uint32_t)stride;
++    size             = params.size;
++    opaque           = format == DRM_FORMAT_XRGB8888 || format == DRM_FORMAT_XBGR8888;
++
++    allocator->backend->log(AQ_LOG_DEBUG, std::format("DMAHeap: allocated {}x{} {} linear, stride {}, fd {}", width, height, fourccToName(format), stride, attrs.fds[0]));
++}
++
++Aquamarine::CDMAHeapBuffer::~CDMAHeapBuffer() {
++    events.destroy.emit();
++    if (attrs.fds[0] >= 0)
++        close(attrs.fds[0]);
++}
++
++eBufferCapability Aquamarine::CDMAHeapBuffer::caps() {
++    return BUFFER_CAPABILITY_NONE;
++}
++
++eBufferType Aquamarine::CDMAHeapBuffer::type() {
++    return BUFFER_TYPE_DMABUF;
++}
++
++void Aquamarine::CDMAHeapBuffer::update(const Hyprutils::Math::CRegion& damage) {
++    ;
++}
++
++bool Aquamarine::CDMAHeapBuffer::isSynchronous() {
++    return false;
++}
++
++bool Aquamarine::CDMAHeapBuffer::good() {
++    return attrs.success && attrs.fds[0] >= 0;
++}
++
++SDMABUFAttrs Aquamarine::CDMAHeapBuffer::dmabuf() {
++    return attrs;
++}
++
++Aquamarine::CDMAHeapAllocator::CDMAHeapAllocator(int heapFD_, CWeakPointer<CBackend> backend_, std::string heapPath_) :
++    heapFD(heapFD_), heapPath(std::move(heapPath_)), backend(backend_) {
++    ;
++}
++
++Aquamarine::CDMAHeapAllocator::~CDMAHeapAllocator() {
++    if (heapFD >= 0)
++        close(heapFD);
++}
++
++SP<CDMAHeapAllocator> Aquamarine::CDMAHeapAllocator::create(CWeakPointer<CBackend> backend_, const std::string& heapPath) {
++    const int fd = open(heapPath.c_str(), O_RDONLY | O_CLOEXEC);
++    if (fd < 0) {
++        backend_->log(AQ_LOG_ERROR, std::format("DMAHeap: cannot open {}: {}", heapPath, strerror(errno)));
++        return nullptr;
++    }
++
++    auto allocator  = SP<CDMAHeapAllocator>(new CDMAHeapAllocator(fd, backend_, heapPath));
++    allocator->self = allocator;
++    backend_->log(AQ_LOG_DEBUG, std::format("DMAHeap: scanout buffers from {}", heapPath));
++    return allocator;
++}
++
++SP<IBuffer> Aquamarine::CDMAHeapAllocator::acquire(const SAllocatorBufferParams& params, SP<CSwapchain> swapchain_) {
++    auto buffer = SP<IBuffer>(new CDMAHeapBuffer(params, self));
++    return buffer->good() ? buffer : nullptr;
++}
++
++SP<CBackend> Aquamarine::CDMAHeapAllocator::getBackend() {
++    return backend.lock();
++}
++
++int Aquamarine::CDMAHeapAllocator::drmFD() {
++    return -1;
++}
++
++eAllocatorType Aquamarine::CDMAHeapAllocator::type() {
++    return AQ_ALLOCATOR_TYPE_DMA_HEAP;
++}
+diff --git a/src/backend/drm/DRM.cpp b/src/backend/drm/DRM.cpp
+index 431247b..644534f 100644
+--- a/src/backend/drm/DRM.cpp
++++ b/src/backend/drm/DRM.cpp
+@@ -4,6 +4,7 @@
+ #include <aquamarine/backend/drm/Legacy.hpp>
+ #include <aquamarine/backend/drm/Atomic.hpp>
+ #include <aquamarine/allocator/GBM.hpp>
++#include <aquamarine/allocator/DMAHeap.hpp>
+ #include <aquamarine/allocator/DRMDumb.hpp>
+ #include <cstdint>
+ #include <format>
+@@ -857,6 +858,21 @@ bool Aquamarine::CDRMBackend::shouldBlit() {
+     return !!primary;
+ }
+ 
++
++// AQ_DRM_DMA_HEAP=/dev/dma_heap/<heap>: allocate KMS scanout buffers from a DMA-BUF
++// heap instead of GBM (Android GKI: KGSL GPU is not a DRM device, GBM on the display
++// node cannot allocate display-importable buffers for the GPU renderer).
++static SP<IAllocator> scanoutAllocator(SP<CBackend> backend) {
++    static SP<IAllocator> heap;
++    static bool           tried = false;
++    if (!tried) {
++        tried = true;
++        if (const auto ENV = getenv("AQ_DRM_DMA_HEAP"); ENV && *ENV)
++            heap = CDMAHeapAllocator::create(backend, ENV);
++    }
++    return heap ? heap : backend->primaryAllocator;
++}
++
+ bool Aquamarine::CDRMBackend::initMgpu() {
+     if (!rendererRequired)
+         return true;
+@@ -1562,7 +1578,7 @@ void Aquamarine::CDRMBackend::onReady() {
+ 
+         // swapchain has to be created here because allocator is absent in connect if not ready
+         auto primaryBackend  = primary ? primary : self;
+-        c->output->swapchain = CSwapchain::create(backend->primaryAllocator, primaryBackend.lock());
++        c->output->swapchain = CSwapchain::create(scanoutAllocator(backend.lock()), primaryBackend.lock());
+         c->output->swapchain->reconfigure(SSwapchainOptions{.length = 0, .scanout = true, .multigpu = !!primary, .scanoutOutput = c->output}); // mark the swapchain for scanout
+         c->output->needsFrame = true;
+ 
+@@ -1719,12 +1735,26 @@ bool Aquamarine::SDRMPlane::init(drmModePlane* plane) {
+             CRTC->cursor = self.lock();
+             break;
+         }
++
++        static const bool SPLIT = getenv("AQ_DRM_SPLIT_PRIMARY") && std::string_view{getenv("AQ_DRM_SPLIT_PRIMARY")} != "0";
++        if (SPLIT && type == DRM_PLANE_TYPE_OVERLAY && CRTC->primary && !CRTC->primary->splitPartner) {
++            CRTC->primary->splitPartner = self.lock();
++            backend->backend->log(AQ_LOG_DEBUG, std::format("drm: Plane {} scans out the right half of primary plane {} (crtc {})", id, CRTC->primary->id, CRTC->id));
++            break;
++        }
+     }
+ 
+     return true;
+ }
+ 
+ SP<SDRMCRTC> Aquamarine::SDRMConnector::getCurrentCRTC(const drmModeConnector* connector) {
++    // AQ_DRM_IGNORE_BOOT_CRTC: don't adopt the CRTC the bootloader left active
++    // (Qualcomm continuous splash): the first commit on it is rejected, while a
++    // freshly allocated CRTC in the same mode takes over the panel cleanly.
++    static const bool IGNORE_BOOT_CRTC = getenv("AQ_DRM_IGNORE_BOOT_CRTC") && std::string_view{getenv("AQ_DRM_IGNORE_BOOT_CRTC")} != "0";
++    if (IGNORE_BOOT_CRTC)
++        return nullptr;
++
+     uint32_t crtcID = 0;
+     if (props.values.crtc_id) {
+         TRACE(backend->backend->log(AQ_LOG_TRACE, "drm: Using crtc_id for finding crtc"));
+@@ -2028,18 +2058,32 @@ void Aquamarine::SDRMConnector::connect(drmModeConnector* connector) {
+             continue;
+         }
+ 
++        // AQ_DRM_PREFERRED_ONLY: expose only the kernel-preferred mode(s). On
++        // Qualcomm SDE with continuous splash any first commit in a different
++        // mode is a first-frame DMS, which the DSI driver rejects, wedging the
++        // panel (no backlight control, DPMS cycles crash the SoC).
++        static const bool PREFERRED_ONLY = getenv("AQ_DRM_PREFERRED_ONLY") && std::string_view{getenv("AQ_DRM_PREFERRED_ONLY")} != "0";
++        if (PREFERRED_ONLY && !(drmMode.type & DRM_MODE_TYPE_PREFERRED)) {
++            backend->backend->log(AQ_LOG_DEBUG, std::format("drm: Skipping mode {} (AQ_DRM_PREFERRED_ONLY)", i));
++            continue;
++        }
++
+         auto aqMode         = makeShared<SOutputMode>();
+         aqMode->pixelSize   = {drmMode.hdisplay, drmMode.vdisplay};
+         aqMode->refreshRate = calculateRefresh(drmMode);
+         aqMode->preferred   = (drmMode.type & DRM_MODE_TYPE_PREFERRED);
+         aqMode->modeInfo    = drmMode;
+ 
+-        if (i == 1)
++        // Fall back to the kernel-preferred mode (else the first one). With
++        // Qualcomm continuous splash the CRTC state is not exposed, so this is the
++        // mode the first commit uses; it must match the bootloader's mode or SDE
++        // rejects the first-frame dynamic mode switch and wedges the DSI panel.
++        if (aqMode->preferred || !fallbackMode)
+             fallbackMode = aqMode;
+ 
+         output->modes.emplace_back(aqMode);
+ 
+-        if (currentModeInfo && std::memcmp(&drmMode, currentModeInfo, sizeof(drmModeModeInfo)) != 0) {
++        if (currentModeInfo && std::memcmp(&drmMode, currentModeInfo, sizeof(drmModeModeInfo)) == 0) {
+             output->state->setMode(aqMode);
+ 
+             //uint64_t modeID = 0;
+@@ -2116,7 +2160,7 @@ void Aquamarine::SDRMConnector::connect(drmModeConnector* connector) {
+     }
+ 
+     auto primaryBackend = backend->primary ? backend->primary : backend;
+-    output->swapchain   = CSwapchain::create(backend->backend->primaryAllocator, primaryBackend.lock());
++    output->swapchain   = CSwapchain::create(scanoutAllocator(backend->backend.lock()), primaryBackend.lock());
+     output->swapchain->reconfigure(SSwapchainOptions{.length = 0, .scanout = true, .multigpu = !!backend->primary, .scanoutOutput = output}); // mark the swapchain for scanout
+     output->needsFrame = true;
+     backend->backend->events.newOutput.emit(SP<IOutput>(output));
+diff --git a/src/backend/drm/impl/Atomic.cpp b/src/backend/drm/impl/Atomic.cpp
+index e47781b..99b17eb 100644
+--- a/src/backend/drm/impl/Atomic.cpp
++++ b/src/backend/drm/impl/Atomic.cpp
+@@ -168,6 +168,21 @@ CDRMAtomicRequest::SAsyncResult Aquamarine::CDRMAtomicRequest::submitAsync(int d
+ 
+ void Aquamarine::CDRMAtomicRequest::planeProps(Hyprutils::Memory::CSharedPointer<SDRMPlane> plane, Hyprutils::Memory::CSharedPointer<CDRMFB> fb, uint32_t crtc,
+                                                Hyprutils::Math::Vector2D pos, eOutputColorRange colorRange) {
++    const auto partner = plane->splitPartner;
++    if (partner && fb && crtc && fb->buffer->size.x >= 2) {
++        const uint32_t width = (uint32_t)fb->buffer->size.x, half = width / 2;
++        planePropsRect(plane, fb, crtc, pos, colorRange, 0, half);
++        planePropsRect(partner, fb, crtc, {pos.x + half, pos.y}, colorRange, half, width - half);
++        return;
++    }
++
++    planePropsRect(plane, fb, crtc, pos, colorRange, 0, 0);
++    if (partner)
++        planePropsRect(partner, nullptr, 0, {}, colorRange, 0, 0);
++}
++
++void Aquamarine::CDRMAtomicRequest::planePropsRect(Hyprutils::Memory::CSharedPointer<SDRMPlane> plane, Hyprutils::Memory::CSharedPointer<CDRMFB> fb, uint32_t crtc,
++                                                   Hyprutils::Math::Vector2D pos, eOutputColorRange colorRange, uint32_t srcX, uint32_t srcW) {
+ 
+     if (failed)
+         return;
+@@ -188,11 +203,12 @@ void Aquamarine::CDRMAtomicRequest::planeProps(Hyprutils::Memory::CSharedPointer
+                                    plane->props.values.fb_id, plane->props.values.crtc_id)));
+ 
+     // src_ are 16.16 fixed point (lol)
+-    add(plane->id, plane->props.values.src_x, 0);
++    const uint32_t width = srcW ? srcW : (uint32_t)fb->buffer->size.x;
++    add(plane->id, plane->props.values.src_x, ((uint64_t)srcX) << 16);
+     add(plane->id, plane->props.values.src_y, 0);
+-    add(plane->id, plane->props.values.src_w, ((uint64_t)fb->buffer->size.x) << 16);
++    add(plane->id, plane->props.values.src_w, ((uint64_t)width) << 16);
+     add(plane->id, plane->props.values.src_h, ((uint64_t)fb->buffer->size.y) << 16);
+-    add(plane->id, plane->props.values.crtc_w, (uint32_t)fb->buffer->size.x);
++    add(plane->id, plane->props.values.crtc_w, width);
+     add(plane->id, plane->props.values.crtc_h, (uint32_t)fb->buffer->size.y);
+     add(plane->id, plane->props.values.fb_id, fb->id);
+     add(plane->id, plane->props.values.crtc_id, crtc);
+@@ -262,7 +278,10 @@ void Aquamarine::CDRMAtomicRequest::addConnector(Hyprutils::Memory::CSharedPoint
+             free(currentMode);
+         }
+ 
+-        if (modeDiffers)
++        // AQ_DRM_FORCE_MODE_ID: Qualcomm SDE after continuous splash reports the splash CRTC
++        // as active but not enabled, so a modeset without MODE_ID fails with EINVAL.
++        static const bool forceModeID = getenv("AQ_DRM_FORCE_MODE_ID");
++        if (modeDiffers || forceModeID)
+             addConnectorModeset(connector, data);
+ 
+         // Setup HDR
+@@ -322,8 +341,11 @@ void Aquamarine::CDRMAtomicRequest::addConnector(Hyprutils::Memory::CSharedPoint
+ 
+         planeProps(connector->crtc->primary, data.mainFB, connector->crtc->id, {}, STATE.colorRange);
+ 
+-        if (connector->output->supportsExplicit && (data.committed & COutputState::AQ_OUTPUT_STATE_EXPLICIT_IN_FENCE) && STATE.explicitInFence >= 0)
++        if (connector->output->supportsExplicit && (data.committed & COutputState::AQ_OUTPUT_STATE_EXPLICIT_IN_FENCE) && STATE.explicitInFence >= 0) {
+             add(connector->crtc->primary->id, connector->crtc->primary->props.values.in_fence_fd, STATE.explicitInFence);
++            if (const auto partner = connector->crtc->primary->splitPartner; partner && partner->props.values.in_fence_fd)
++                add(partner->id, partner->props.values.in_fence_fd, STATE.explicitInFence);
++        }
+ 
+         if (connector->crtc->primary->props.values.fb_damage_clips)
+             add(connector->crtc->primary->id, connector->crtc->primary->props.values.fb_damage_clips, data.atomic.fbDamage);
+@@ -332,6 +354,40 @@ void Aquamarine::CDRMAtomicRequest::addConnector(Hyprutils::Memory::CSharedPoint
+     }
+ }
+ 
++// AQ_DRM_CONNECTOR_PROPS="name=value[,name=value...]": extra connector
++// properties set on every enabling modeset. Qualcomm SDE needs "dsc_mode=1" so
++// the first commit after continuous splash keeps the DSC config (otherwise the
++// DSI driver sees a DSC mode switch on the first frame and never enables the
++// panel: no backlight control, DPMS crashes).
++void Aquamarine::CDRMAtomicRequest::addExtraConnectorProps(Hyprutils::Memory::CSharedPointer<SDRMConnector> connector) {
++    const char* env = getenv("AQ_DRM_CONNECTOR_PROPS");
++    if (!env || !*env)
++        return;
++    auto props = drmModeObjectGetProperties(backend->gpu->fd, connector->id, DRM_MODE_OBJECT_CONNECTOR);
++    if (!props)
++        return;
++    std::string_view list{env};
++    while (!list.empty()) {
++        const auto comma = list.find(',');
++        const auto item  = list.substr(0, comma);
++        list             = comma == std::string_view::npos ? std::string_view{} : list.substr(comma + 1);
++        const auto eq    = item.find('=');
++        if (eq == std::string_view::npos)
++            continue;
++        const std::string name{item.substr(0, eq)};
++        const uint64_t    value = std::strtoull(std::string{item.substr(eq + 1)}.c_str(), nullptr, 0);
++        for (uint32_t i = 0; i < props->count_props; ++i) {
++            auto prop = drmModeGetProperty(backend->gpu->fd, props->props[i]);
++            if (!prop)
++                continue;
++            if (name == prop->name)
++                add(connector->id, prop->prop_id, value);
++            drmModeFreeProperty(prop);
++        }
++    }
++    drmModeFreeObjectProperties(props);
++}
++
+ void Aquamarine::CDRMAtomicRequest::addConnectorModeset(Hyprutils::Memory::CSharedPointer<SDRMConnector> connector, SDRMConnectorCommitData& data) {
+     if (!data.modeset)
+         return;
+@@ -344,6 +400,7 @@ void Aquamarine::CDRMAtomicRequest::addConnectorModeset(Hyprutils::Memory::CShar
+         add(connector->crtc->id, connector->crtc->props.values.mode_id, data.atomic.modeBlob);
+         if (connector->props.values.link_status)
+             add(connector->id, connector->props.values.link_status, DRM_MODE_LINK_STATUS_GOOD);
++        addExtraConnectorProps(connector);
+     } else
+         add(connector->crtc->id, connector->crtc->props.values.mode_id, data.atomic.modeBlob);
+ }

@@ -1,0 +1,10 @@
+[Unit]
+Description=LoA screen auto-brightness (SSC ambient light sensor)
+After=loa-sscrpcd.service loa-desktop.service
+Wants=loa-sscrpcd.service
+[Service]
+ExecStart=/usr/bin/python3 /usr/lib/loa/loa-autobrightness.py
+Restart=always
+RestartSec=5
+[Install]
+WantedBy=multi-user.target

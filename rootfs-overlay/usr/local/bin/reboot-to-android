@@ -1,0 +1,3 @@
+#!/bin/sh
+# Reboot the tablet into stock Android once; the next reboot returns to Omarchy.
+exec systemctl start loa-reboot-android.service

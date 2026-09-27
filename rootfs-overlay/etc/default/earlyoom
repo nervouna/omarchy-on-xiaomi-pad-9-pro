@@ -1,0 +1,10 @@
+# LoA: early userspace OOM killer (NOTES.md, 2026-09-27). systemd-oomd can't
+# work here: the bootloader cmdline has cgroup_disable=pressure (no per-cgroup
+# PSI). Without it, running out of RAM (a heavy Electron app + a chat app, no swap)
+# thrashed and froze the tablet for minutes instead of killing anything.
+# Act when BOTH available RAM < 8% and free zram swap < 10% (SIGTERM; SIGKILL at
+# half of that). Browser/Electron helper processes are preferred; the desktop, the LoA/Android
+# service island (python3, android-run, HALs) and core services are never picked.
+# Process names are the kernel's 15-char comm ("android.hardwar"), and
+# systemd strips backslashes here, so use [.] instead of \. in the regexes.
+EARLYOOM_ARGS="-m 8 -s 10 -r 3600 -n --prefer '(^|/)(chromium|chrome|electron.*)$' --avoid '(^|/)(init|systemd.*|sd-pam|sshd.*|seatd|dbus-.*|polkitd|udisksd|upowerd|NetworkManager|wpa_supplicant|bluetoothd|bt-bridge[.]sh|btattach|busybox|loa-.*|android.*|vendor[.].*|audio.*|sscrpcd|.*servicemanag.*|touch-main-loop|python3|agmplay|Hyprland|quickshell|Xwayland|pipewire.*|wireplumber|fcitx5|hypridle|mako|uwsm.*|earlyoom)$'"

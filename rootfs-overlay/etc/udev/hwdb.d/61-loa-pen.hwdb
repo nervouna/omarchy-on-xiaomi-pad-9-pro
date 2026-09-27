@@ -1,0 +1,7 @@
+# Xiaomi Pad 9 Pro (shuntian) NT36536 pen devices: the driver reports no axis
+# resolution, and libinput rejects a tablet without one ("missing tablet
+# capabilities: resolution"). Axes are 100 units per pixel of the 3200x2136 panel
+# (264.0 x 176.2 mm) -> 1212 units/mm on both axes.
+evdev:name:NVTCapacitivePen*:*
+ EVDEV_ABS_00=::1212
+ EVDEV_ABS_01=::1212

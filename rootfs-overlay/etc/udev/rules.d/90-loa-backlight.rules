@@ -1,0 +1,3 @@
+# Let the desktop user (video group) set the panel backlight (loa-power-button,
+# Omarchy brightness controls).
+ACTION=="add", SUBSYSTEM=="backlight", RUN+="/usr/bin/chgrp video /sys%p/brightness", RUN+="/usr/bin/chmod g+w /sys%p/brightness"

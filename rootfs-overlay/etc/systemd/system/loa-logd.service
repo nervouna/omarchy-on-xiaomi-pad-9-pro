@@ -1,0 +1,9 @@
+[Unit]
+Description=LoA stand-in Android logd (liblog -> journal) for stock vendor daemons
+DefaultDependencies=no
+After=loa-mdev.service
+[Service]
+ExecStart=/usr/bin/python3 /usr/lib/loa/loa-logd.py
+Restart=always
+[Install]
+WantedBy=sysinit.target

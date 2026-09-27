@@ -1,0 +1,13 @@
+[Unit]
+Description=LoA stock Android second-stage kernel modules
+DefaultDependencies=no
+After=loa-mdev.service
+Wants=loa-mdev.service
+Before=systemd-udev-trigger.service sysinit.target
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/lib/loa/load-modules.sh
+TimeoutStartSec=180
+[Install]
+WantedBy=sysinit.target

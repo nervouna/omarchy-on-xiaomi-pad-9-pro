@@ -1,0 +1,16 @@
+power: cat: /sys/class/mi_display/disp-DSI-0/power: Is a directory 
+panel_info: panel_name=mdss_dsi_shuntian_35_02_0a_dsc_vid 
+disp_count: panel_active=853 panel_doze_active=0 panel_daily_active=853 
+dynamic_fps: 50 
+flatmode_check: 0 
+bl.bl_power: 0
+bl.actual_brightness: 0
+bl.type: raw
+disable_cont_dimming
+edid_override
+force
+num_bl_frames
+output_bpc
+rx_cmd
+tx_cmd
+vrr_range

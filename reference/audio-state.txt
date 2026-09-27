@@ -1,0 +1,39 @@
+ 0 [alormtpsndcard ]: alor-mtp-snd-ca - alor-mtp-snd-card
+                      alor-mtp-snd-card
+
+55
+aud_pasthru_adsp
+fastrpc-adsp-secure
+fastrpc-cdsp
+fastrpc-cdsp-secure
+fastrpc-lpass2000
+fastrpc-nsp1000
+msm_audio_ion
+msm_audio_ion_cma
+
+== 1083 /vendor/bin/audioadsprpcd audiopd adsp 
+/dev/dma_heap/system
+/dev/fastrpc-lpass2000
+/dev/null
+== 2059 /vendor/bin/hw/audiohalservice.qti 
+/dev/ashmem429e0bdd-5d33-4d2b-a84f-742f74275368
+/dev/aud_pasthru_adsp
+/dev/binderfs/binder
+/dev/binderfs/hwbinder
+/dev/binderfs/vndbinder
+/dev/dma_heap/system
+/dev/msm_adsp_sleepmon
+/dev/msm_audio_ion
+/dev/null
+/dev/snd/controlC0
+== 2739 /vendor/bin/adsprpcd rootpd adsp 
+/dev/dma_heap/system
+/dev/fastrpc-lpass2000
+/dev/null
+total 3096
+drwx--x--x  2 root root  12900 1970-01-04 03:18 .
+drwxr-xr-x 30 root root   6300 2026-09-25 12:52 ..
+-r--r--r--  1 root root 131072 1970-01-04 03:18 properties_serial
+-r--r--r--  1 root root 185360 1970-01-04 03:18 property_info
+643
+3.0M	/dev/__properties__

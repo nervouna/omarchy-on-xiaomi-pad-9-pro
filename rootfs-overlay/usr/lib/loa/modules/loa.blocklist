@@ -1,0 +1,2 @@
+# Xiaomi hang detector: fed by Android system_server; panics when nobody feeds it.
+blocklist hangdetect

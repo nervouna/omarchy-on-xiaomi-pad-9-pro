@@ -1,0 +1,10 @@
+[Unit]
+Description=Stock Android system suspend service (wakelocks for AGM clients)
+After=loa-servicemanager.service
+Requires=loa-servicemanager.service
+[Service]
+ExecStart=/usr/lib/loa/android-run /system/bin/hw/android.system.suspend-service
+Restart=always
+RestartSec=2
+[Install]
+WantedBy=multi-user.target

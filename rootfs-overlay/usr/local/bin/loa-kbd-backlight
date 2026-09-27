@@ -1,0 +1,13 @@
+#!/bin/sh
+# Xiaomi keyboard backlight (handled by loa-keyboard.service).
+#   loa-kbd-backlight            show setting
+#   loa-kbd-backlight auto [N]   on while typing in dim light (level N, 0-100)
+#   loa-kbd-backlight on [N]     always on (while the screen is on)
+#   loa-kbd-backlight off
+F=/var/lib/loa/kbd-backlight
+case "$1" in
+  "") cat "$F" ;;
+  auto|on) echo "$1 ${2:-$(awk '{print ($2 ? $2 : 60)}' "$F" 2>/dev/null)}" > "$F" ;;
+  off) echo "off" > "$F" ;;
+  *) echo "usage: loa-kbd-backlight [auto [N] | on [N] | off]" >&2; exit 2 ;;
+esac

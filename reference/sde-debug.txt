@@ -1,0 +1,258 @@
+=== /sys/kernel/debug/dri/0/debug/core_perf/bw_vote_mode
+0
+=== /sys/kernel/debug/dri/0/debug/core_perf/bw_vote_mode_updated
+N
+=== /sys/kernel/debug/dri/0/debug/core_perf/core_clk_rate
+0
+=== /sys/kernel/debug/dri/0/debug/core_perf/fix_core_ab_vote
+0
+=== /sys/kernel/debug/dri/0/debug/core_perf/fix_core_clk_rate
+0
+=== /sys/kernel/debug/dri/0/debug/core_perf/fix_core_ib_vote
+0
+=== /sys/kernel/debug/dri/0/debug/core_perf/max_core_clk_rate
+650000000
+=== /sys/kernel/debug/dri/0/debug/core_perf/min_core_ib
+2500000
+=== /sys/kernel/debug/dri/0/debug/core_perf/min_dram_ib
+800000
+=== /sys/kernel/debug/dri/0/debug/core_perf/min_llcc_ib
+0
+=== /sys/kernel/debug/dri/0/debug/core_perf/mmrm_clk_cb
+mmrm clk_limit:18446744073709551594 clk:core_clk
+=== /sys/kernel/debug/dri/0/debug/core_perf/perf_mode
+mode 0 min_mdp_clk 0 min_bus_vote 0
+=== /sys/kernel/debug/dri/0/debug/core_perf/sys_cache_enable
+4294967295
+=== /sys/kernel/debug/dri/0/debug/core_perf/threshold_high
+30200000
+=== /sys/kernel/debug/dri/0/debug/core_perf/threshold_low
+21400000
+=== /sys/kernel/debug/dri/0/debug/core_perf/uidle_enable
+Y
+=== /sys/kernel/debug/dri/0/debug/core_perf/uidle_fal10_target_idle_time_us
+50
+=== /sys/kernel/debug/dri/0/debug/core_perf/uidle_fal10_threshold_us
+12
+=== /sys/kernel/debug/dri/0/debug/core_perf/uidle_fal1_max_threshold
+255
+=== /sys/kernel/debug/dri/0/debug/core_perf/uidle_fal1_target_idle_time_us
+40
+=== /sys/kernel/debug/dri/0/debug/core_perf/uidle_perf_cnt
+0
+=== /sys/kernel/debug/dri/0/debug/core_perf/uidle_status
+Y
+=== /sys/kernel/debug/dri/0/crtc208/status
+crtc:208 width:3200 height:2136
+
+	mixer:0 ctl:0 width:1600 height:2136
+	mixer:1 ctl:0 width:1600 height:2136
+
+	plane:131 stage:6 rotation:1
+	fb:375 image format:AB24 wxh:128x288 cpp[0]:4 cpp[1]:0 cpp[2]:0 cpp[3]:0 
+	modifier:360287970189639681 
+	pitches[0]:     512 pitches[1]:       0 pitches[2]:       0 pitches[3]:       0 
+	offsets[0]:       0 offsets[1]:       0 offsets[2]:       0 offsets[3]:       0 
+	src_x:   0 src_y:   0 src_w:  80 src_h: 282
+	dst x:   0 dst_y: 707 dst_w:  80 dst_h: 282
+	multirect: mode: 0 index: 0
+	excl_rect: x:   0 y:   0 w:   0 h:   0
+
+	plane:135 stage:5 rotation:1
+	fb:361 image format:AB24 wxh:3200x48 cpp[0]:4 cpp[1]:0 cpp[2]:0 cpp[3]:0 
+	modifier:360287970189639681 
+	pitches[0]:   12800 pitches[1]:       0 pitches[2]:       0 pitches[3]:       0 
+	offsets[0]:       0 offsets[1]:       0 offsets[2]:       0 offsets[3]:       0 
+	src_x:1600 src_y:   0 src_w:1600 src_h:  40
+	dst x:1600 dst_y:2096 dst_w:1600 dst_h:  40
+	multirect: mode: 0 index: 0
+	excl_rect: x:   0 y:   0 w:   0 h:   0
+
+	plane:139 stage:5 rotation:1
+	fb:361 image format:AB24 wxh:3200x48 cpp[0]:4 cpp[1]:0 cpp[2]:0 cpp[3]:0 
+	modifier:360287970189639681 
+	pitches[0]:   12800 pitches[1]:       0 pitches[2]:       0 pitches[3]:       0 
+	offsets[0]:       0 offsets[1]:       0 offsets[2]:       0 offsets[3]:       0 
+	src_x:   0 src_y:   0 src_w:1600 src_h:  40
+	dst x:   0 dst_y:2096 dst_w:1600 dst_h:  40
+	multirect: mode: 0 index: 0
+	excl_rect: x:   0 y:   0 w:   0 h:   0
+
+	plane:143 stage:4 rotation:1
+	fb:386 image format:AB24 wxh:64x16 cpp[0]:4 cpp[1]:0 cpp[2]:0 cpp[3]:0 
+	modifier:360287970189639681 
+	pitches[0]:     256 pitches[1]:       0 pitches[2]:       0 pitches[3]:       0 
+	offsets[0]:       0 offsets[1]:       0 offsets[2]:       0 offsets[3]:       0 
+	src_x:   0 src_y:   0 src_w:  50 src_h:  10
+	dst x:1575 dst_y:  36 dst_w:  50 dst_h:  10
+	multirect: mode: 0 index: 0
+	excl_rect: x:   0 y:   0 w:   0 h:   0
+
+	plane:147 stage:3 rotation:1
+	fb:362 image format:AB24 wxh:3200x96 cpp[0]:4 cpp[1]:0 cpp[2]:0 cpp[3]:0 
+	modifier:360287970189639681 
+	pitches[0]:   12800 pitches[1]:       0 pitches[2]:       0 pitches[3]:       0 
+	offsets[0]:       0 offsets[1]:       0 offsets[2]:       0 offsets[3]:       0 
+	src_x:1600 src_y:   0 src_w:1600 src_h:  82
+	dst x:1600 dst_y:   0 dst_w:1600 dst_h:  82
+	multirect: mode: 0 index: 0
+	excl_rect: x:   0 y:   0 w:   0 h:   0
+
+	plane:151 stage:3 rotation:1
+	fb:362 image format:AB24 wxh:3200x96 cpp[0]:4 cpp[1]:0 cpp[2]:0 cpp[3]:0 
+	modifier:360287970189639681 
+	pitches[0]:   12800 pitches[1]:       0 pitches[2]:       0 pitches[3]:       0 
+	offsets[0]:       0 offsets[1]:       0 offsets[2]:       0 offsets[3]:       0 
+	src_x:   0 src_y:   0 src_w:1600 src_h:  82
+	dst x:   0 dst_y:   0 dst_w:1600 dst_h:  82
+	multirect: mode: 0 index: 0
+	excl_rect: x:   0 y:   0 w:   0 h:   0
+
+	plane:155 stage:2 rotation:1
+	fb:368 image format:AB24 wxh:128x1296 cpp[0]:4 cpp[1]:0 cpp[2]:0 cpp[3]:0 
+	modifier:360287970189639681 
+	pitches[0]:     512 pitches[1]:       0 pitches[2]:       0 pitches[3]:       0 
+	offsets[0]:       0 offsets[1]:       0 offsets[2]:       0 offsets[3]:       0 
+	src_x:   0 src_y:   0 src_w:  81 src_h:1287
+	dst x:   0 dst_y: 707 dst_w:  81 dst_h:1287
+	multirect: mode: 0 index: 0
+	excl_rect: x:   0 y:   0 w:   0 h:   0
+
+	plane:159 stage:1 rotation:1
+	fb:379 image format:AB24 wxh:3200x2144 cpp[0]:4 cpp[1]:0 cpp[2]:0 cpp[3]:0 
+	modifier:360287970189639681 
+	pitches[0]:   12800 pitches[1]:       0 pitches[2]:       0 pitches[3]:       0 
+	offsets[0]:       0 offsets[1]:       0 offsets[2]:       0 offsets[3]:       0 
+	src_x:1600 src_y:   0 src_w:1600 src_h:2136
+	dst x:1600 dst_y:   0 dst_w:1600 dst_h:2136
+	multirect: mode: 0 index: 0
+	excl_rect: x:   0 y:   0 w:   0 h:   0
+
+	plane:163 stage:1 rotation:1
+	fb:379 image format:AB24 wxh:3200x2144 cpp[0]:4 cpp[1]:0 cpp[2]:0 cpp[3]:0 
+	modifier:360287970189639681 
+	pitches[0]:   12800 pitches[1]:       0 pitches[2]:       0 pitches[3]:       0 
+	offsets[0]:       0 offsets[1]:       0 offsets[2]:       0 offsets[3]:       0 
+	src_x:   0 src_y:   0 src_w:1600 src_h:2136
+	dst x:   0 dst_y:   0 dst_w:1600 dst_h:2136
+	multirect: mode: 0 index: 0
+	excl_rect: x:   0 y:   0 w:   0 h:   0
+
+=== /sys/kernel/debug/dri/0/crtc208/state
+num_connectors: 1
+client type: 0
+intf_mode: 2
+core_clk_rate: 650000000
+bw_ctl[qcom,sde-data-bus]: 0
+max_per_pipe_ib[qcom,sde-data-bus]: 0
+bw_ctl[qcom,sde-llcc-bus]: 0
+max_per_pipe_ib[qcom,sde-llcc-bus]: 0
+bw_ctl[qcom,sde-ebi-bus]: 0
+max_per_pipe_ib[qcom,sde-ebi-bus]: 0
+bw_ctl[qcom,sde-ddr-rt]: 0
+max_per_pipe_ib[qcom,sde-ddr-rt]: 0
+=== /sys/kernel/debug/dri/0/crtc208/fps
+fps: 0.0
+=== /sys/kernel/debug/dri/0/encoder69/status
+intf:1    vsync:    3665     underrun:       0    mode: video
+intf:2    vsync:       0     underrun:       0    mode: video
+=== /sys/kernel/debug/dri/0/debug/rm_status
+type:2 blk:lm allocated:2 unallocated:10
+type:3 blk:dspp allocated:2 unallocated:2
+type:4 blk:ds allocated:2 unallocated:2
+type:5 blk:ctl allocated:1 unallocated:5
+type:6 blk:cdm allocated:0 unallocated:1
+type:7 blk:pingpong allocated:2 unallocated:10
+type:8 blk:intf allocated:2 unallocated:2
+type:9 blk:wb allocated:0 unallocated:2
+type:10 blk:dsc allocated:2 unallocated:2
+type:11 blk:vdc allocated:0 unallocated:0
+type:12 blk:merge_3d allocated:0 unallocated:0
+type:13 blk:qdss allocated:0 unallocated:0
+type:14 blk:dnsc_blur allocated:0 unallocated:1
+=== /sys/kernel/debug/dri/0/DSI-1/output_bpc
+Maximum: 0
+=== clocks
+    disp_cc_mdss_pclk0_clk_src       1       1        0        182945000   0          0     50000      Y      9ac0000.qcom,mdss_dsi_ctrl0     pixel_clk_rcg            
+       disp_cc_mdss_pclk0_clk        1       1        0        182945000   0          0     50000      Y         9ac0000.qcom,mdss_dsi_ctrl0     pixel_clk                
+    disp_cc_mdss_pclk1_clk_src       1       1        0        182945000   0          0     50000      Y      9ac3000.qcom,mdss_dsi_ctrl1     pixel_clk_rcg            
+       disp_cc_mdss_pclk1_clk        1       1        0        182945000   0          0     50000      Y         9ac3000.qcom,mdss_dsi_ctrl1     pixel_clk                
+    disp_cc_mdss_byte0_clk_src       2       2        0        171510937   0          0     50000      Y      9ac0000.qcom,mdss_dsi_ctrl0     byte_clk_rcg             
+       disp_cc_mdss_byte0_div_clk_src 1       1        0        85755469    0          0     50000      Y         deviceless                      no_connection_id         
+          disp_cc_mdss_byte0_intf_clk 1       1        0        85755469    0          0     50000      Y            9ac0000.qcom,mdss_dsi_ctrl0     byte_intf_clk            
+       disp_cc_mdss_byte0_clk        1       1        0        171510937   0          0     50000      Y         9ac0000.qcom,mdss_dsi_ctrl0     byte_clk                 
+    disp_cc_mdss_byte1_clk_src       2       2        0        171510937   0          0     50000      Y      9ac3000.qcom,mdss_dsi_ctrl1     byte_clk_rcg             
+       disp_cc_mdss_byte1_div_clk_src 1       1        0        85755469    0          0     50000      Y         deviceless                      no_connection_id         
+          disp_cc_mdss_byte1_intf_clk 1       1        0        85755469    0          0     50000      Y            9ac3000.qcom,mdss_dsi_ctrl1     byte_intf_clk            
+       disp_cc_mdss_byte1_clk        1       1        0        171510937   0          0     50000      Y         9ac3000.qcom,mdss_dsi_ctrl1     byte_clk                 
+             disp_cc_mdss_mdp_clk_src 3       3        0        85714334    0          0     50000      Y               9bc2000.qcom,sde_cesta          core_clk                 
+                disp_cc_mdss_mdp_clk 1       1        0        85714334    0          0     50000      Y                  9bc2000.qcom,sde_cesta          branch_clk               
+          disp_cc_mdss_pclk2_clk_src 0       0        0        19200000    0          0     50000      N            deviceless                      no_connection_id         
+             disp_cc_mdss_pclk2_clk  0       0        0        19200000    0          0     50000      N               deviceless                      no_connection_id         
+          disp_cc_mdss_ahb_clk_src   2       2        0        19200000    0          0     50000      Y            deviceless                      no_connection_id         
+             disp_cc_mdss_ahb_swi_div_clk_src 1       1        0        4800000     0          0     50000      Y               deviceless                      no_connection_id         
+                disp_cc_mdss_ahb_swi_clk 1       1        0        4800000     0          0     50000      Y                  9800000.qcom,mdss_mdp           ahb_swi_clk              
+             disp_cc_mdss_ahb1_clk   0       0        0        19200000    0          0     50000      Y               deviceless                      no_connection_id         
+=== icc
+llcc_mc                                         3071726     19120000
+  9800000.qcom,mdss_mdp                  0            0       800000
+  17f6000.mdp_hf_qtb                     0            0            0
+ebi                                             3071726     19120000
+  9800000.qcom,mdss_mdp                  0            0       800000
+  17f6000.mdp_hf_qtb                     0            0            0
+llcc_mc_cam_ife_0                                     0            0
+ebi_cam_ife_0                                         0            0
+llcc_mc_cam_ife_1                                     0            0
+ebi_cam_ife_1                                         0            0
+llcc_mc_cam_ife_2                                     0            0
+ebi_cam_ife_2                                         0            0
+llcc_mc_pcie_crm_hw_0                                 0            0
+ebi_pcie_crm_hw_0                                     0            0
+llcc_mc_disp_crm_sw_0                                 0            0
+ebi_disp_crm_sw_0                                     0            0
+llcc_mc_disp_crm_hw_0                                 0            0
+ebi_disp_crm_hw_0                                     0            0
+llcc_mc_disp_crm_hw_1                                 0            0
+ebi_disp_crm_hw_1                                     0            0
+llcc_mc_disp_crm_hw_2                                 0            0
+ebi_disp_crm_hw_2                                     0            0
+llcc_mc_disp_crm_hw_3                           5849677      2285030
+ebi_disp_crm_hw_3                               5849677      2285030
+llcc_mc_disp_crm_hw_4                                 0            0
+ebi_disp_crm_hw_4                                     0            0
+llcc_mc_disp_crm_hw_5                                 0            0
+ebi_disp_crm_hw_5                                     0            0
+llcc_mc_disp_crm_hw_6                                 0            0
+ebi_disp_crm_hw_6                                     0            0
+llcc_mc_disp_crm_hw_7                                 0            0
+ebi_disp_crm_hw_7                                     0            0
+llcc_mc_disp_crm_hw_8                                 0            0
+ebi_disp_crm_hw_8                                     0            0
+  9800000.qcom,mdss_mdp                  0            0        14000
+qhs_display_cfg                                       0        14000
+  9800000.qcom,mdss_mdp                  0            0        14000
+  9800000.qcom,mdss_mdp                  0            0        14000
+  9800000.qcom,mdss_mdp                  0            0        14000
+  9800000.qcom,mdss_mdp                  0            0        14000
+  soc:qcom,dcvs:llcc:sp                  3     12949904     19376000
+  9800000.qcom,mdss_mdp                  0            0      2500000
+  17f6000.mdp_hf_qtb                     0            0            0
+  9800000.qcom,mdss_mdp                  0            0        14000
+qns_llcc                                       14029338     19376000
+  9800000.qcom,mdss_mdp                  0            0      2500000
+  17f6000.mdp_hf_qtb                     0            0            0
+  soc:qcom,dcvs:llcc:sp                  3     12949904     19376000
+qns_llcc_cam_ife_0                                    0            0
+qns_llcc_cam_ife_1                                    0            0
+qns_llcc_cam_ife_2                                    0            0
+qns_llcc_pcie_crm_hw_0                                0            0
+qnm_mnoc_hf_disp_crm_sw_0                             0            0
+qnm_pcie_disp_crm_sw_0                                0            0
+qns_llcc_disp_crm_sw_0                                0            0
+qnm_mnoc_hf_disp_crm_hw_0                             0            0
+qnm_pcie_disp_crm_hw_0                                0            0
+qns_llcc_disp_crm_hw_0                                0            0
+qnm_mnoc_hf_disp_crm_hw_1                             0            0
+qnm_pcie_disp_crm_hw_1                                0            0
+=== underrun
+0

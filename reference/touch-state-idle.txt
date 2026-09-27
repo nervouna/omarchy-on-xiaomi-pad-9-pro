@@ -1,0 +1,40 @@
+base_refresh_enable: 2  
+charger: 0  
+click_gesture_enable: 0  
+fh_enable: 1  
+filter_level: 1  
+flg_buf: 0  
+game_mode: 0  
+gesture_dbclk: 0  
+gesture_switch: 0  
+ic_log_level: 0  
+idle baseline update: 0  
+idle_high_base_en: 0  
+idle_high_base_keep_time: 90  
+idle_wake_th: 50  
+int_state: 1  
+mc_calibration_en: 0  
+op_mode: 2  
+pen_scan_rate: 240  
+raw_data_type: 1  
+report_coordinate: 0  
+report_rate: 120  
+scan_freq: 90  
+scan_freq_no: 1  
+single_step: 0  
+stylus_enable: 0  
+stylus_only: 0  
+sw_reset: 0  
+thp_base_trace_flag: 0  
+427:         74         90          0          0          0          0          0          0   msmgpio  55 Edge      xiaomi_tp
+1
+== 2083 /odm/bin/hw/vendor.xiaomi.hw.touchfeature-service 
+14
+vendor.xiaomi.h touch-main-loop vendor.xiaomi.h TouchfeatureOne binder:2083_1 binder:2083_2 touch-report-po touch-timer-thr touch-frame-fi touch-cmd-fi touch-cmd-fo touch-m-palm_pe touch-socket-se binder:2083_3 
+/odm/lib64/libtouchreport.so
+/odm/lib64/libtouchreport_alg.so
+/odm/lib64/libtouchreport_hal.so
+/odm/lib64/libtouchreport_sensor.so
+== 2692 /odm/bin/toucheventcheck 
+3
+toucheventcheck touchevent-dump touchevent-serv 

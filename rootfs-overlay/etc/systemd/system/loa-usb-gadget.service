@@ -1,0 +1,12 @@
+[Unit]
+Description=LoA USB debug gadget (ACM serial + ECM 192.168.77.2)
+After=loa-modules.service
+Wants=loa-modules.service
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/lib/loa/usb-gadget.sh
+ExecStart=/usr/bin/ip link set usb0 up
+ExecStart=-/usr/bin/ip addr add 192.168.77.2/30 dev usb0
+[Install]
+WantedBy=multi-user.target

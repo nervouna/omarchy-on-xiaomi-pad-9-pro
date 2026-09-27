@@ -1,0 +1,20 @@
+// Let the desktop user suspend, reboot and power off. The session is started by
+// loa-desktop.service without a logind seat, so logind's allow_active defaults
+// never apply (the Omarchy menu asked for the admin password). The
+// *-multiple-sessions variants are checked whenever other sessions are open
+// (e.g. SSH over USB).
+polkit.addRule(function(action, subject) {
+    var allowed = [
+        "org.freedesktop.login1.suspend",
+        "org.freedesktop.login1.suspend-multiple-sessions",
+        "org.freedesktop.login1.reboot",
+        "org.freedesktop.login1.reboot-multiple-sessions",
+        "org.freedesktop.login1.power-off",
+        "org.freedesktop.login1.power-off-multiple-sessions",
+        "org.freedesktop.login1.set-reboot-to-firmware-setup",
+        "org.freedesktop.login1.set-reboot-parameter"
+    ];
+    if (allowed.indexOf(action.id) >= 0 && subject.user == "omarchy") {
+        return polkit.Result.YES;
+    }
+});

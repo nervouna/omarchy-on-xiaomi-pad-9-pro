@@ -1,0 +1,13 @@
+[Unit]
+Description=LoA Bluetooth bridge (stock HAL <-> PTY <-> hci_uart hci0 for BlueZ)
+After=loa-bthal.service
+Requires=loa-bthal.service
+PartOf=loa-bthal.service
+Before=bluetooth.service
+Wants=bluetooth.service
+[Service]
+ExecStart=/usr/lib/loa/bt-bridge.sh
+Restart=always
+RestartSec=3
+[Install]
+WantedBy=multi-user.target

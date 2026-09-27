@@ -1,0 +1,10 @@
+[Unit]
+Description=Stock Qualcomm audio HAL (hosts the AGM service)
+After=loa-servicemanager.service loa-audiopd.service
+Requires=loa-servicemanager.service loa-audiopd.service
+[Service]
+ExecStart=/usr/lib/loa/android-run /vendor/bin/hw/audiohalservice.qti
+Restart=always
+RestartSec=2
+[Install]
+WantedBy=multi-user.target

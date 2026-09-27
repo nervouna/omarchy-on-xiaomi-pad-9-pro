@@ -1,0 +1,10 @@
+[Unit]
+Description=Stock Qualcomm Bluetooth HAL (powers WCN7750 BT, downloads firmware)
+After=loa-servicemanager.service loa-thermalhal.service
+Requires=loa-servicemanager.service loa-thermalhal.service
+[Service]
+ExecStart=/usr/lib/loa/android-run /vendor/bin/hw/android.hardware.bluetooth@aidl-service-qti
+Restart=always
+RestartSec=2
+[Install]
+WantedBy=multi-user.target

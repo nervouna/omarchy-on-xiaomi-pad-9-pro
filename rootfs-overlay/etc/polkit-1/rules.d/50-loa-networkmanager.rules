@@ -1,0 +1,10 @@
+// The desktop session (loa-desktop.service) has no logind seat, so polkit never
+// treats omarchy as the "active local" user and NetworkManager's allow_active
+// defaults don't apply: every scan/connect asked for the admin password.
+// Grant omarchy what a local desktop user normally gets from NetworkManager.
+polkit.addRule(function(action, subject) {
+    if (action.id.indexOf("org.freedesktop.NetworkManager.") == 0 &&
+        subject.user == "omarchy") {
+        return polkit.Result.YES;
+    }
+});

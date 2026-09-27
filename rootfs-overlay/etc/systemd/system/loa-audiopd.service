@@ -1,0 +1,10 @@
+[Unit]
+Description=Stock audioadsprpcd: start the ADSP static audio PD (registers the ASoC card)
+After=loa-pd-mapper.service
+Requires=loa-pd-mapper.service
+[Service]
+ExecStart=/usr/lib/loa/android-run /vendor/bin/audioadsprpcd audiopd adsp
+Restart=always
+RestartSec=2
+[Install]
+WantedBy=multi-user.target

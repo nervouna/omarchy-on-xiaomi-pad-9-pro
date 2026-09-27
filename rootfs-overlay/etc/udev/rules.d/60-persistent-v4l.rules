@@ -1,0 +1,3 @@
+# LoA: masks the stock 60-persistent-v4l.rules. Its v4l_id probe opens the
+# Qualcomm camera (CAM-ICP) subdevices at boot and can oops the camera driver
+# (cam_icp_subdev_open, kernel panic seen 2026-09-27). Cameras are unused here.

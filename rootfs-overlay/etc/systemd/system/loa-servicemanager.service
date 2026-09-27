@@ -1,0 +1,10 @@
+[Unit]
+Description=Stock Android servicemanager (binder context manager)
+After=loa-binder.service
+Requires=loa-binder.service
+[Service]
+ExecStart=/usr/lib/loa/android-run /system/bin/servicemanager
+Restart=always
+RestartSec=2
+[Install]
+WantedBy=multi-user.target

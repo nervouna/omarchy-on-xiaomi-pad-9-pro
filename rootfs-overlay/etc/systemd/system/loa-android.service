@@ -1,0 +1,10 @@
+[Unit]
+Description=LoA Android runtime chroot (stock system/vendor/odm read-only, APEX, properties)
+After=loa-modules.service loa-logd.service
+Requires=loa-modules.service
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/lib/loa/android-chroot.sh
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,19 @@
+[Unit]
+Description=Omarchy desktop (Hyprland on the native DSI panel)
+After=loa-modules.service seatd.service user@1000.service systemd-user-sessions.service
+Wants=seatd.service user@1000.service
+[Service]
+Type=simple
+User=omarchy
+PAMName=login
+WorkingDirectory=/home/omarchy
+Environment=XDG_RUNTIME_DIR=/run/user/1000 XDG_SESSION_TYPE=wayland XDG_CURRENT_DESKTOP=Hyprland XDG_SESSION_DESKTOP=Hyprland
+Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus
+Environment=LIBSEAT_BACKEND=seatd AQ_DRM_DEVICES=/dev/dri/card0 AQ_DRM_SPLIT_PRIMARY=1
+Environment=GBM_ALWAYS_SOFTWARE=1 LIBGL_ALWAYS_SOFTWARE=1 GALLIUM_DRIVER=llvmpipe
+ExecStartPre=/usr/bin/sh -c 'for i in $(seq 50); do [ -e /dev/dri/card0 ] && exit 0; sleep 0.2; done; exit 1'
+ExecStart=/usr/bin/Hyprland
+Restart=on-failure
+RestartSec=3
+[Install]
+WantedBy=graphical.target

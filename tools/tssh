@@ -1,0 +1,9 @@
+#!/bin/sh
+# SSH into native Omarchy on the tablet over USB ECM (IPv6 link-local, no host config).
+# The tablet's ECM MAC 02:00:00:77:00:02 gives link-local fe80::ff:fe77:2.
+D=$(cd "$(dirname "$0")/.." && pwd)
+ifc=$(ifconfig -l | tr ' ' '\n' | while read i; do ifconfig "$i" 2>/dev/null | grep -q "ether 02:00:00:77:00:01" && echo "$i"; done | head -1)
+[ -n "$ifc" ] || { echo "tssh: tablet USB ECM interface not found" >&2; exit 1; }
+# `tssh -t CMD` allocates a terminal (interactive commands such as passwd).
+tty=""; [ "$1" = "-t" ] && { tty=-t; shift; }
+exec ssh $tty -i "$D/keys/loa_shuntian" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o ConnectTimeout=8 "root@fe80::ff:fe77:2%$ifc" "$@"

@@ -1,0 +1,9 @@
+[Unit]
+Description=LoA tablet power key (short: screen off/on, hold: system menu)
+After=loa-desktop.service
+[Service]
+ExecStart=/usr/bin/python3 /usr/lib/loa/loa-power-key.py
+Restart=always
+RestartSec=2
+[Install]
+WantedBy=graphical.target

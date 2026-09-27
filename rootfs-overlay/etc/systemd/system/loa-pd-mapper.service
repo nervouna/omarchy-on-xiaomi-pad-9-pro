@@ -1,0 +1,10 @@
+[Unit]
+Description=Stock pd-mapper (QRTR service locator for DSP protection domains)
+After=loa-android.service loa-subsys.service
+Requires=loa-android.service
+[Service]
+ExecStart=/usr/lib/loa/android-run /vendor/bin/pd-mapper
+Restart=always
+RestartSec=2
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,13 @@
+[Unit]
+Description=LoA one-shot: switch off the continuous-splash display before Hyprland (experiment)
+After=loa-modules.service
+Before=loa-desktop.service
+ConditionPathExists=/loa/try-splash-off
+[Service]
+Type=oneshot
+# One-shot: remove the trigger first so a crash can never loop.
+ExecStartPre=/usr/bin/rm -f /loa/try-splash-off
+ExecStartPre=/usr/bin/sync
+ExecStart=/usr/lib/loa/loa-splash-off
+[Install]
+WantedBy=graphical.target

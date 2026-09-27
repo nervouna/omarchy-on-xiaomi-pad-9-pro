@@ -1,0 +1,2 @@
+# LoA: members of wheel (the omarchy user) may use sudo with their password.
+%wheel ALL=(ALL:ALL) ALL

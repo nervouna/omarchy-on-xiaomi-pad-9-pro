@@ -1,0 +1,10 @@
+[Unit]
+Description=LoA microphone relay (stock PAL capture -> PipeWire pipe-tunnel source)
+After=loa-audiohal.service
+Requires=loa-audiohal.service
+[Service]
+ExecStart=/usr/bin/python3 /usr/lib/loa/loa-mic-relay.py
+Restart=always
+RestartSec=2
+[Install]
+WantedBy=multi-user.target

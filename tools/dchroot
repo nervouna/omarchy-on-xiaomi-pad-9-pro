@@ -1,0 +1,6 @@
+#!/bin/sh
+# Run a bash script (args joined, or stdin if no args) inside the Omarchy root
+# (`omarchy` partition, mounted by devroot.sh on rooted Android) as root.
+t=$(mktemp); { echo "trap 'gpgconf --kill all 2>/dev/null' EXIT"; if [ $# -gt 0 ]; then printf '%s\n' "$*"; else cat; fi; } > "$t"
+adb push -q "$t" /data/local/tmp/dchroot-cmd.sh >/dev/null; rm -f "$t"
+exec adb shell "/debug_ramdisk/su -mm -c 'cp /data/local/tmp/dchroot-cmd.sh /data/local/omarchy-dev/tmp/.cmd.sh && chroot /data/local/omarchy-dev /usr/bin/env -i HOME=/root TERM=xterm LANG=C.UTF-8 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin /bin/bash /tmp/.cmd.sh'"

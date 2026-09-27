@@ -1,0 +1,10 @@
+[Unit]
+Description=LoA binderfs for stock Android services
+After=loa-android.service
+Requires=loa-android.service
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/lib/loa/binder-setup.sh
+[Install]
+WantedBy=multi-user.target

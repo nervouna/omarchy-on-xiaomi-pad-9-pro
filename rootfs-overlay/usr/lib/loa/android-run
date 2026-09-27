@@ -1,0 +1,8 @@
+#!/bin/sh
+# Run a stock Android binary inside /opt/loa-android.  usage: android-run /vendor/bin/foo args...
+R=/opt/loa-android
+[ -e $R/system/lib64 ] || /usr/lib/loa/android-chroot.sh >/dev/null
+cd /
+exec env -i PATH=/system/bin:/vendor/bin ANDROID_ROOT=/system ANDROID_DATA=/data \
+    LD_LIBRARY_PATH=/apex/com.android.runtime/lib64/bionic:/system/lib64:/apex/com.android.i18n/lib64:/vendor/lib64:/vendor/lib64/hw:/odm/lib64:/odm/lib64/hw \
+    /usr/bin/chroot $R /system/bin/env LD_PRELOAD=/loa/lib64/libloa_selinux_stub.so "$@"

@@ -1,0 +1,10 @@
+[Unit]
+Description=Stock Qualcomm sensors RPC daemon for the ADSP sensor PD (keyboard link)
+After=loa-android.service loa-subsys.service
+Requires=loa-android.service
+[Service]
+ExecStart=/usr/lib/loa/android-run /vendor/bin/sscrpcd sensorspd adsp
+Restart=always
+RestartSec=2
+[Install]
+WantedBy=multi-user.target

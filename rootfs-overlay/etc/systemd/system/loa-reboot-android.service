@@ -1,0 +1,7 @@
+[Unit]
+Description=Reboot into stock Android once (stage 1 honours /loa/next-boot-android)
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/touch /loa/next-boot-android
+ExecStart=/usr/bin/sync
+ExecStart=/usr/bin/systemctl reboot

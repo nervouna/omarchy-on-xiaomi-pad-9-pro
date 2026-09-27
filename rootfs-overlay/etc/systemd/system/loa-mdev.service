@@ -1,0 +1,10 @@
+[Unit]
+Description=LoA device nodes (busybox mdev; kernel has no devtmpfs)
+DefaultDependencies=no
+Before=systemd-udevd.service systemd-udev-trigger.service sysinit.target
+[Service]
+Type=simple
+ExecStartPre=/usr/lib/loa/busybox mdev -s
+ExecStart=/usr/lib/loa/busybox mdev -df
+[Install]
+WantedBy=sysinit.target

@@ -1,0 +1,10 @@
+[Unit]
+Description=LoA speaker relay (PipeWire pipe-tunnel -> stock AGM playback)
+After=loa-audiohal.service loa-suspend.service
+Requires=loa-audiohal.service
+[Service]
+ExecStart=/usr/bin/python3 /usr/lib/loa/loa-audio-relay.py
+Restart=always
+RestartSec=2
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,8 @@
+// Let the desktop user trigger the one-shot "reboot to Android" unit.
+polkit.addRule(function(action, subject) {
+    if (action.id == "org.freedesktop.systemd1.manage-units" &&
+        action.lookup("unit") == "loa-reboot-android.service" &&
+        action.lookup("verb") == "start" && subject.user == "omarchy") {
+        return polkit.Result.YES;
+    }
+});

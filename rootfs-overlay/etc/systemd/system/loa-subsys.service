@@ -1,0 +1,10 @@
+[Unit]
+Description=LoA start ADSP/CDSP remote processors
+After=loa-modules.service
+Requires=loa-modules.service
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/lib/loa/start-subsys.sh
+[Install]
+WantedBy=multi-user.target

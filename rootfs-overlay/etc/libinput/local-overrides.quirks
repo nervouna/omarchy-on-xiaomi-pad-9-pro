@@ -1,0 +1,18 @@
+# Xiaomi Pad 9 Pro keyboard touchpad (DSP-relayed, virtual:15d9:00a1): pressure
+# is 0..65535 but libinput's default palm threshold is an absolute 130, so every
+# finger was classified as a palm. Ignore the pressure axes; use BTN_TOUCH.
+[Xiaomi Keyboard Touchpad]
+MatchName=Xiaomi Touch
+MatchUdevType=touchpad
+AttrEventCode=-ABS_MT_PRESSURE;-ABS_PRESSURE;
+
+# Xiaomi Pad 9 Pro pen devices (NT36536): libinput rejects a pen tablet without a
+# BTN_STYLUS button ("missing tablet capabilities: btn-stylus"). The Focus Pencil's
+# buttons arrive over Bluetooth instead; declare the code so the tablet is accepted.
+# The driver also re-announces the pen (BTN_TOOL_PEN 0/1) when switching between hover
+# and contact, so libinput takes the contact pressure as the pen's offset and never
+# sees a tip. Hide pressure/distance: libinput then uses BTN_TOUCH for tip contact
+# (pen = pointing device; no pressure sensitivity).
+[Xiaomi NT36536 Pen]
+MatchName=NVTCapacitivePen*
+AttrEventCode=+BTN_STYLUS;-ABS_PRESSURE;-ABS_DISTANCE;

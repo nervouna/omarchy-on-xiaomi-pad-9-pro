@@ -1,0 +1,10 @@
+[Unit]
+Description=Stock Qualcomm thermal HAL (the BT HAL blocks until IThermal exists)
+After=loa-servicemanager.service
+Requires=loa-servicemanager.service
+[Service]
+ExecStart=/usr/lib/loa/android-run /vendor/bin/hw/android.hardware.thermal-service.qti
+Restart=always
+RestartSec=2
+[Install]
+WantedBy=multi-user.target

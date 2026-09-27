@@ -1,0 +1,12 @@
+[Unit]
+Description=LoA boot reached the desktop: clear stage-1 boot-attempt counter
+After=loa-desktop.service multi-user.target
+Requires=loa-desktop.service
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStartPre=/usr/bin/sleep 20
+ExecStartPre=/usr/bin/systemctl is-active --quiet loa-desktop.service
+ExecStart=/usr/bin/sh -c 'echo 0 > /loa/boot-attempts; touch /run/loa-boot-ok; sync'
+[Install]
+WantedBy=graphical.target

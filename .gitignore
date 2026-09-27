@@ -1,0 +1,18 @@
+# Local only: vendor binaries, images, keys, backups, build output
+/images/*
+!/images/README.md
+/keys/*
+!/keys/README.md
+/backups/
+/build/
+/toolchains/
+/src/
+/tools/src/*/lib/
+/boot/initramfs.cpio
+/boot/initramfs.lz4
+/boot/stock-ramdisk.lz4
+.DS_Store
+
+# Device-specific, never in git: the Android property snapshot from YOUR tablet
+# (tools/capture-android-props.sh), keys, images.
+/rootfs-overlay/usr/lib/loa/android-props.tar.gz
