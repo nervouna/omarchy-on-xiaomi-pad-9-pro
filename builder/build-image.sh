@@ -59,7 +59,7 @@ root_down() {
     local r=$1
     # Deepest first; lazy, since rbind'ed /dev and /sys hold submounts.
     for _ in 1 2 3; do
-        findmnt -rn -o TARGET | grep "^$r" | sort -r | while read -r m; do umount -l "$m" 2>/dev/null || true; done
+        { findmnt -rn -o TARGET | grep "^$r" || true; } | sort -r | while read -r m; do umount -l "$m" 2>/dev/null || true; done
     done
     MOUNTED=${MOUNTED//"$r "/}
 }
