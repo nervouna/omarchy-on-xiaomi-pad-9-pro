@@ -4,7 +4,7 @@ DefaultDependencies=no
 # Not after local-fs.target: tmp.mount is ordered after swap.target, so that
 # formed a cycle and systemd dropped this job (no zram on some boots).
 # The root fs is mounted by stage 1; /dev/zram0 is created by mdev.
-After=loa-mdev.service
+After=loa-mdev.service loa-vendor-import.service
 Before=swap.target shutdown.target
 Conflicts=shutdown.target
 

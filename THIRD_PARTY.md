@@ -7,6 +7,11 @@ parts are not original and keep their own licenses:
 |---|---|---|---|
 | `boot/busybox-static`, `rootfs-overlay/usr/lib/loa/busybox` | BusyBox 1.36.1, unmodified static build from Ubuntu's `busybox-static` (arm64) package `1:1.36.1-6ubuntu3.1` | GPL-2.0-only | <https://launchpad.net/ubuntu/+source/busybox/1:1.36.1-6ubuntu3.1>, upstream <https://busybox.net> |
 | `patches/aquamarine-*.patch` | A patch against [Aquamarine](https://github.com/hyprwm/aquamarine) (Hyprland's rendering backend) | BSD-3-Clause, like Aquamarine | — |
+| `patches/omarchy/0001-0003` | Patches from the [omarchy-android](https://github.com/nervouna/omarchy-android) project against [Omarchy](https://github.com/basecamp/omarchy) (their PRoot code paths are inactive natively) | MIT (Omarchy; omarchy-android © BlackFireAlex) | — |
+| `rootfs-overlay/usr/local/bin/{Xwayland,omarchy-voxtype-*,omarchy-dbus-service}` | Runtime scripts from omarchy-android, unmodified | MIT, © BlackFireAlex | omarchy-android `runtime/guest/root` |
+| `builder/in-builder.sh` Mesa options | Build recipe from omarchy-android; the image contains Mesa built from [mesa-for-android-container](https://github.com/lfdevs/mesa-for-android-container) (KGSL backend) | MIT AND BSD-3-Clause AND SGI-B-2.0 (Mesa) | pinned in `builder/pins.conf` |
+
+Images built by `builder/build-image.sh` also contain [ttfx](https://github.com/omacom/ttfx) (MIT, built from the commit pinned in `builder/pins.conf`), Arch Linux ARM and Omarchy packages under their own licenses, and Omarchy itself (MIT).
 
 Referenced, not included:
 

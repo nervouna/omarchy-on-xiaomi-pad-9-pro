@@ -9,8 +9,8 @@ Android, no PRoot: the tablet runs systemd, Hyprland and the Omarchy shell on th
 stock Android GKI kernel. Android's own vendor daemons (audio, Bluetooth, sensors,
 touch) run beside it in a small "service island".
 
-> **Status: work in progress.** Daily-usable on two test tablets. Installing on a
-> fresh tablet still needs a tablet that already runs the port (see [Roadmap](#roadmap)).
+> **Status: work in progress.** Daily-usable on two test tablets. The root image
+> builds from scratch; there are no prebuilt downloads yet (see [Roadmap](#roadmap)).
 
 ## Requirements
 
@@ -25,7 +25,8 @@ touch) run beside it in a small "service island".
 >   scripts are written for macOS.
 > - **Magisk root on stock Android**, once, to capture your tablet's Android
 >   properties (`tools/capture-android-props.sh`).
-> - For now, **a tablet that already runs the port**, to build the root image from.
+> - **An ARM64 Arch Linux ARM machine to build the image on**: an ARM64 container
+>   or VM, or a tablet that already runs the port. It needs access to GitHub.
 
 ## What works
 
@@ -74,9 +75,10 @@ double-scaled). None of this is in the repo; it just shows what the port can car
 
 ## Roadmap
 
-- **From-scratch installer**: today a new tablet is installed from a golden image
-  made on a tablet that already runs the port. The goal is an image built from
-  scratch (Arch Linux ARM + Omarchy + this overlay) that anyone can flash.
+- **Prebuilt images**: the root image now builds from scratch and carries no
+  vendor files (each tablet imports its own on first boot). Next: build it on
+  GitHub's ARM runners and publish it, a first-login password instead of
+  SSH-key-only access, and a property snapshot that doesn't need Magisk.
 - **Focus Pencil Pro**: motion sensors (accelerometer + gyro, for air gestures),
   haptic feedback, pressure/tilt, palm rejection.
 - **Charging**: Xiaomi adapter authentication for full-power charging.
@@ -94,15 +96,15 @@ Still: this flashes partitions on a device you own, voids what warranty unlockin
 hasn't already voided, and may wipe Android's data (repartitioning does). Use a
 tablet you can afford to lose. No warranty, see [LICENSE](LICENSE).
 
-## Installing (if you already have a working tablet)
+## Installing
 
 Follow [docs/runbook.md](docs/runbook.md). In short:
 
 ```
 tools/capture-android-props.sh          # stock Android + Magisk: your tablet's property snapshot
-tools/make-image.sh --clean --reset-hypr --apply   # on a working tablet: golden root image
+builder/build-image.sh                  # on an ARM64 Arch Linux ARM machine: root image from scratch
 python3 boot/build-init-boot.py         # stage-1 boot image from the stock init_boot
-tools/install.sh images/omarchy-clean-*.img.zst    # new tablet in Fastboot
+tools/install.sh images/omarchy-scratch-*.img.zst  # new tablet in Fastboot
 tools/personalize.sh                    # new identity (Wi-Fi MAC, host keys, ids)
 tools/apply-overlay.sh                  # bring the system up to this repo; adds your SSH key
 tools/repartition.sh 64 --apply         # optional: 64 GiB root instead of 17
@@ -118,8 +120,9 @@ You need your own SSH key in `keys/` (the repo ships none) and the stock
 | `boot/` | Stage-1 init (busybox) + `loa-helper`, and `build-init-boot.py`, which packs them with the stock first-stage ramdisk into `init_boot` |
 | `rootfs-overlay/` | System files the port owns (systemd units, daemons in `usr/lib/loa`, `/usr/share/loa/hypr/loa.lua` device settings, PipeWire/WirePlumber drop-ins in `/etc`). `tools/apply-overlay.sh` installs/updates them, backing up anything it replaces (`--diff` previews) |
 | `user-defaults/` | Files the user may customise (hypridle, Chromium flags, fcitx5 profile): installed only if missing, never overwritten |
+| `builder/` | From-scratch root image builder: package list, pinned sources, build scripts |
 | `tools/` | Mac-side scripts: `tssh` (SSH over USB), install/image/repartition/personalize, `build.sh` for the native helpers (`tools/src`) |
-| `patches/` | Aquamarine patch (split primary plane, DMA-heap scanout, forced MODE_ID) |
+| `patches/` | Aquamarine patch (split primary plane, DMA-heap scanout, forced MODE_ID) and the Omarchy patch series |
 | `reference/` | Captures from stock Android (keyboard/pen packets, DRM/SDE state, logcat excerpts) and kernel crash logs |
 | `docs/` | Runbook, status, maintenance, and the full engineering log |
 | `images/`, `keys/` | Local only (git-ignored): boot and root images, your SSH key |

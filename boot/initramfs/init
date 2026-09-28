@@ -112,6 +112,17 @@ if [ -s /newroot/loa/dev-watchdog ]; then
     /loa/loa-helper watchdog "$secs"
 fi
 
+# First boot of a from-scratch image: the first-stage (ramdisk) modules exist only
+# here, in the stock vendor ramdisk. The rest is imported by loa-vendor-import.
+K=$(uname -r)
+if [ ! -d /newroot/usr/lib/modules/$K/ramdisk ] && [ -d /lib/modules ]; then
+    mkdir -p /newroot/usr/lib/modules/$K/ramdisk /newroot/usr/lib/loa/modules
+    cp /lib/modules/*.ko /newroot/usr/lib/modules/$K/ramdisk/
+    cp /lib/modules/modules.load /newroot/usr/lib/loa/modules/first_stage.load 2>/dev/null
+    rm -f /newroot/usr/lib/loa/vendor-imported   # re-run depmod over the full set
+    sync; log "imported $(ls /newroot/usr/lib/modules/$K/ramdisk | wc -l) ramdisk modules"
+fi
+
 echo /usr/lib/firmware/image > /sys/module/firmware_class/parameters/path 2>/dev/null
 echo > /proc/sys/kernel/hotplug  # stage-2 runs mdev as a netlink daemon
 # systemd (PID 1) subscribes to udev events only if /run/udev/control exists or

@@ -7,7 +7,7 @@
 chroot，也不是 PRoot：平板在原厂 Android GKI 内核上直接运行 systemd、Hyprland 和 Omarchy
 桌面。Android 自带的厂商守护进程（音频、蓝牙、传感器、触控）在旁边一个小小的“服务孤岛”里运行。
 
-> **状态：开发中。** 已在两台测试平板上日常使用。目前给一台新平板安装，仍然需要一台已经跑着本项目的平板（见[路线图](#路线图)）。
+> **状态：开发中。** 已在两台测试平板上日常使用。根文件系统镜像可以从零构建；暂无预构建下载（见[路线图](#路线图)）。
 
 ## 前提条件
 
@@ -19,7 +19,7 @@ chroot，也不是 PRoot：平板在原厂 Android GKI 内核上直接运行 sys
 > - **一台 Mac**，装好 Android platform-tools、`zstd`、`lz4` 和 `python3`。主机端脚本是为 macOS 写的。
 > - **原厂 Android 上的 Magisk root**，只需一次，用来采集你这台平板的 Android 属性
 >   （`tools/capture-android-props.sh`）。
-> - 暂时还需要 **一台已经运行本项目的平板**，用来制作根文件系统镜像。
+> - **一台 ARM64 的 Arch Linux ARM 机器用来构建镜像**：ARM64 容器或虚拟机，或一台已运行本项目的平板。需要能访问 GitHub。
 
 ## 可用功能
 
@@ -63,8 +63,8 @@ chroot，也不是 PRoot：平板在原厂 Android GKI 内核上直接运行 sys
 
 ## 路线图
 
-- **从零安装**：目前新平板要用另一台已运行本项目的平板制作的镜像来安装。目标是一个从零构建
-  （Arch Linux ARM + Omarchy + 本 overlay）、任何人都能刷的镜像。
+- **预构建镜像**：根文件系统镜像已可从零构建，且不含任何厂商文件（每台平板首次启动时自行导入）。
+  下一步：在 GitHub 的 ARM 构建机上构建并发布；首次登录设置密码，而不是只能用 SSH 密钥；属性快照不再依赖 Magisk。
 - **Focus Pencil Pro 触控笔**：运动传感器（加速度计 + 陀螺仪，用于隔空手势）、触觉反馈、压感/倾斜、防误触。
 - **充电**：小米充电器认证，实现满功率充电。
 - **摄像头**、**基带**、**耳机孔**。
@@ -79,15 +79,15 @@ chroot，也不是 PRoot：平板在原厂 Android GKI 内核上直接运行 sys
 即便如此：这会刷写你设备上的分区，并可能清除 Android 数据（重新分区会清除）。请使用一台坏了也不心疼的平板。
 本项目不提供任何担保，见 [LICENSE](LICENSE)。
 
-## 安装（前提是你已有一台能用的平板）
+## 安装
 
 按 [docs/runbook.md](docs/runbook.md)（英文）操作。简要步骤：
 
 ```
 tools/capture-android-props.sh          # 原厂 Android + Magisk：采集本机属性快照
-tools/make-image.sh --clean --reset-hypr --apply   # 在已运行的平板上：制作母版根镜像
+builder/build-image.sh                  # 在 ARM64 Arch Linux ARM 机器上：从零构建根镜像
 python3 boot/build-init-boot.py         # 用原厂 init_boot 制作第一阶段启动镜像
-tools/install.sh images/omarchy-clean-*.img.zst    # 新平板进入 Fastboot 后安装
+tools/install.sh images/omarchy-scratch-*.img.zst  # 新平板进入 Fastboot 后安装
 tools/personalize.sh                    # 生成新身份（Wi-Fi MAC、主机密钥、各类 ID）
 tools/apply-overlay.sh                  # 把系统同步到本仓库的版本；添加你的 SSH 公钥
 tools/repartition.sh 64 --apply         # 可选：根分区从 17 GiB 扩到 64 GiB
@@ -102,6 +102,7 @@ tools/repartition.sh 64 --apply         # 可选：根分区从 17 GiB 扩到 64
 | `boot/` | 第一阶段 init（busybox）+ `loa-helper`，以及 `build-init-boot.py`：把它们和原厂第一阶段 ramdisk 打包成 `init_boot` |
 | `rootfs-overlay/` | 本项目管理的系统文件（systemd 单元、`usr/lib/loa` 里的守护进程、`/usr/share/loa/hypr/loa.lua` 设备设置、`/etc` 下的 PipeWire/WirePlumber 配置）。`tools/apply-overlay.sh` 负责安装/更新，替换前会备份（`--diff` 可预览） |
 | `user-defaults/` | 用户可以自定义的文件（hypridle、Chromium 参数、fcitx5 配置）：只在缺失时安装，从不覆盖 |
+| `builder/` | 从零构建根镜像：软件包列表、固定版本的源码、构建脚本 |
 | `tools/` | Mac 端脚本：`tssh`（经 USB 的 SSH）、安装/镜像/重新分区/个性化，以及编译原生辅助程序的 `build.sh`（`tools/src`） |
 | `patches/` | Aquamarine 补丁（拆分主平面、DMA-heap 扫描输出、强制 MODE_ID） |
 | `reference/` | 从原厂 Android 采集的资料（键盘/触控笔数据包、DRM/SDE 状态、logcat 摘录）和内核崩溃日志 |

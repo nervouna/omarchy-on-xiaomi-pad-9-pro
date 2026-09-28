@@ -1,0 +1,18 @@
+[Unit]
+Description=LoA import stock modules, firmware and touch libraries from the tablet's partitions
+# First boot of a from-scratch image (the image carries no vendor files). Runs
+# again only if /usr/lib/loa/vendor-imported is removed.
+DefaultDependencies=no
+After=loa-mdev.service
+Wants=loa-mdev.service
+Before=loa-modules.service sysinit.target
+ConditionPathExists=!/usr/lib/loa/vendor-imported
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/lib/loa/import-vendor.sh
+TimeoutStartSec=300
+
+[Install]
+WantedBy=sysinit.target

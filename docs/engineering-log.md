@@ -1222,3 +1222,44 @@ Source: CodeLinaro display-drivers `display-kernel.lnx.12.13.r1-rel` (src/displa
   540000->810000 for 4K60 over 2-lane docks; revisit after the reset bug) and all
   personal preferences. make-image.sh now excludes those and dereferences dotfiles
   that are symlinks into a repo outside the home whitelist.
+
+### 2026-09-28/29: from-scratch root image builder
+
+- Inventory of a working root (files no package owns, not in the overlay): Omarchy
+  copied to /usr/share/omarchy (= upstream 158e8cf + the 3 omarchy-android PRoot
+  patches, inactive natively since OMARCHY_PROOT is unset, + one audio-slider fix
+  -> patches/omarchy/), Mesa-KGSL in /opt/omarchy-android/mesa (built by the PRoot
+  pipeline), 4 runtime scripts in /usr/local/bin (Xwayland -shm wrapper, voxtype,
+  dbus helper), and device blobs: 980 kernel modules, 184 MB firmware, the THP
+  chroot. /opt/omarchy-android/{hyprland,aquamarine} were dead PRoot leftovers.
+- Every blob can come from the tablet itself: system_dlkm/vendor_dlkm (mapped out
+  of super, like the island's partitions), vendor/odm/modem firmware, the runtime
+  APEX (Bionic) + odm touch libs. Verified byte-identical against the working
+  system. -> loa-vendor-import.service (import-vendor.sh) before loa-modules, and
+  stage 1 copies the first-stage modules (only visible in the vendor ramdisk).
+- builder/build-image.sh: disposable build root compiles Mesa (pinned lfdevs fork,
+  KGSL), Aquamarine 0.15.1 + our patch and ttfx 0.5.0 (packaged without makepkg:
+  stock fakeroot needs SysV IPC); clean target root gets builder/packages.txt,
+  Omarchy, the overlay via tools/overlay-install.sh (split out of
+  apply-overlay.sh), user/locale/keyring; privacy checks; mkfs.ext4 -d. ~30 min on
+  the 12 GB tablet, 2.3 GiB compressed.
+- Pitfalls: pacstrap/arch-chroot need devtmpfs (absent in GKI) -> own chroot setup
+  with the host's /dev bound; pacman CheckSpace needs / to be a mount point ->
+  self-bind; that self-bind joined the host's shared peer group, and unmounting the
+  build's /sys and /dev binds UNMOUNTED THE HOST'S cgroup2, /dev/pts, /dev/shm,
+  debugfs, binderfs... (journald could no longer restart: "Failed to create
+  cgroup"). Reboot fixed it; the builder now runs in a private mount namespace
+  (unshare --mount --propagation private). Also: macOS fastboot fails on a 16 GiB
+  raw file ("Failed reading from ramdump") -> tools/img2simg.py (sparse, verified
+  bit-exact); install.sh uses it.
+- Tested on the 8 GB tablet without touching its system: image on ramdump +
+  init_boot-omarchy-test-ramdump.img (stage 1 prefers ramdump). First boot:
+  465 ramdisk modules, 974 modules, 184M firmware, THP chroot imported; desktop,
+  touch, audio, Bluetooth, keyboard, pen up; after personalize.sh Wi-Fi works.
+  Fixed from the test: loa-zram raced the import (depmod) -> ordered after it;
+  WCNSS ini now imported; mimeapps.list seeded; Omarchy branding defaults
+  (screensaver.txt, about.txt) seeded; ttfx built (Omarchy ships it x86_64 only),
+  so the screensaver works (the old tablets had it toggled off as a workaround).
+- Open: publishing images (CI on ARM runners), first-login password, property
+  snapshot without Magisk, Omarchy 4's own install/config + install/user steps
+  (neither the old tablets nor this image ran them).
