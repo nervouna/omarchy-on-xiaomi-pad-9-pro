@@ -35,6 +35,7 @@ rm -rf /etc/pacman.d/gnupg
 pacman-key --init >/dev/null 2>&1
 pacman-key --populate >/dev/null 2>&1
 echo "pacman keyring re-initialised: $(pacman-key --list-keys 2>/dev/null | grep -c '^pub') keys"
+/usr/lib/loa/setup-omarchy-repo.sh   # the keyring reset dropped Omarchy's key
 echo "$H" > /etc/hostname; hostname "$H"; echo "hostname: $H"
 echo "done: set a password (tools/tssh -t passwd omarchy), then reboot"
 EOF

@@ -38,7 +38,12 @@ findmnt "$STAGE" >/dev/null && { echo "$STAGE is mounted"; exit 1; }
 #  tools/personalize.sh regenerates both on the new tablet.)
 EXCL="./etc/machine-id ./var/log/journal/* ./var/cache/pacman/pkg/*
 ./var/lib/systemd/random-seed ./usr/lib/firmware/wlan/qca_cld/wcn7750/wlan_mac.bin
-./tmp/* ./var/tmp/* ./swapfile ./lost+found/*"
+./tmp/* ./var/tmp/* ./swapfile ./swap/* ./lost+found/*
+./etc/systemd/system/loa-zram.service.d ./usr/local/sbin/omarchy-zram-setup
+./etc/systemd/system/dp-hbr3.service ./etc/systemd/system/*.wants/dp-hbr3.service
+./usr/local/sbin/dp-hbr3"
+# (Per-device tuning made on one tablet, not for others: a swap file, a zram size
+#  fixed to that tablet's RAM, the DP link-rate experiment.)
 if [ "$MODE" = clean ]; then
     # Secrets and personal data. /home/omarchy is copied by whitelist below.
     EXCL="$EXCL ./home/* ./root/* ./etc/NetworkManager/system-connections/*
@@ -81,7 +86,9 @@ set -f; eval "tar --one-file-system --xattrs --acls --numeric-owner $X -cpf - -C
 if [ "$MODE" = clean ]; then
     mkdir -p $M/home/omarchy $M/root/.ssh; chmod 700 $M/home/omarchy $M/root $M/root/.ssh
     chown 1000:1000 $M/home/omarchy
-    (cd /home/omarchy && for k in $HOMEKEEP; do [ -e "$k" ] && echo "$k"; done | tar --xattrs --numeric-owner -cpf - -T -) | tar --xattrs --numeric-owner -xpf - -C $M/home/omarchy
+    (cd /home/omarchy && for k in $HOMEKEEP; do [ -e "$k" ] && echo "$k"; done | tar --dereference --xattrs --numeric-owner -cpf - -T -) | tar --xattrs --numeric-owner -xpf - -C $M/home/omarchy
+    # --dereference: dotfiles managed as symlinks into a repo outside the whitelist
+    # (e.g. ~/Work) are copied as the files they point to, not as dangling links.
     # tar -T creates missing parent dirs (.config, .local, .local/share ...) as root:
     # hand everything under the home back to the user, or apps can't create
     # their data dirs (create_dir_all / singleton lock failures).
@@ -99,6 +106,7 @@ if [ "$MODE" = clean ]; then
     # Lock the user's password (the new owner sets one: tools/tssh -t passwd omarchy).
     sed -i 's/^\(omarchy\):[^:]*:/\1:!:/' $M/etc/shadow
 fi
+sed -i '/^\/swap\//d; /^\/swapfile/d' $M/etc/fstab   # swap files are excluded above
 : > $M/etc/machine-id                      # systemd generates it on first boot
 mkdir -p $M/loa && echo 0 > $M/loa/boot-attempts
 rm -f $M/loa/next-boot-android

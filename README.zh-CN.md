@@ -49,6 +49,7 @@ chroot，也不是 PRoot：平板在原厂 Android GKI 内核上直接运行 sys
 - **没有内存压力信息**（Bootloader 命令行带 `cgroup_disable=pressure`）：无法使用
   systemd-oomd，改用 zram + earlyoom。8 GB 版本跑重型 Electron 应用比较吃紧，12 GB 比较从容。
 - **没有 AF_ALG 加密套接字**：不能用 iwd，改用 NetworkManager。
+- **没有 SysV IPC**：原版 `fakeroot`（以及依赖它的 `makepkg`/AUR 构建）无法运行，改用 AUR 的 `fakeroot-tcp`。
 - **没有 devtmpfs**：`/dev` 由 mdev 填充，udev 叠加在上面。
 - **Aquamarine 打了补丁**：升级 Hyprland 需要用 `patches/` 重新编译 Aquamarine
   （见 [docs/maintenance.md](docs/maintenance.md)）。

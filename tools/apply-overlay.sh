@@ -102,6 +102,10 @@ if [ -n "$PUB" ] && ! grep -qF "$PUB" /root/.ssh/authorized_keys 2>/dev/null; th
 fi
 chmod 600 /root/.ssh/authorized_keys 2>/dev/null || true
 /usr/lib/loa/setup-wlan-files.sh
+/usr/lib/loa/setup-omarchy-repo.sh
+# Warm reset after a panic (keeps the pstore log); the tmpfiles rule does it at boot.
+echo warm > /sys/kernel/reboot/mode 2>/dev/null || true
+systemctl restart systemd-journald
 chown root:root /etc/sudoers.d/10-loa-wheel; chmod 0440 /etc/sudoers.d/10-loa-wheel; visudo -c >/dev/null
 usermod -aG wheel omarchy
 rm -f /etc/systemd/zram-generator.conf
@@ -115,6 +119,6 @@ systemctl enable loa-mdev loa-modules loa-subsys loa-usb-gadget loa-thp loa-boot
     systemd-timesyncd serial-getty@ttyGS0 NetworkManager loa-logd loa-android loa-pd-mapper loa-audiopd \
     loa-binder loa-servicemanager loa-suspend loa-audiohal loa-audio-relay loa-mic-relay loa-power-key \
     loa-splash-off loa-thermalhal loa-bthal loa-bluetooth bluetooth loa-sscrpcd loa-keyboard \
-    loa-autobrightness loa-sleepd earlyoom loa-zram loa-batterysecret loa-pen >/dev/null 2>&1
+    loa-autobrightness loa-sleepd earlyoom loa-zram loa-batterysecret loa-pen systemd-pstore loa-crashdump >/dev/null 2>&1
 echo "overlay applied ($n change(s))"
 EOF

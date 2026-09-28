@@ -1,0 +1,20 @@
+[Unit]
+Description=LoA crash debugging: keep the panic log across the reset (opt-in)
+# Opt-in while chasing a crash: `touch /etc/loa/crashdump-on-panic`, reboot.
+# With download_mode=1 a panic ends in an Apps watchdog bite; the bootloader then
+# warm-resets with RAM kept and boots normally, and systemd-pstore archives the
+# panic log to /var/lib/systemd/pstore/console-ramoops-0 (tested 2026-09-28).
+# With stage 1's download_mode=0 the reset wipes that RAM: no log.
+# It may instead stop in Qualcomm CrashDump mode (seen once, 2026-09-25):
+# Power + Volume Down -> Fastboot, then `fastboot reboot`; the log is kept.
+# Remove the flag file to go back to stage 1's download_mode=0.
+ConditionPathExists=/etc/loa/crashdump-on-panic
+After=loa-modules.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/sh -c 'echo 1 > /sys/module/qcom_dload_mode/parameters/download_mode'
+
+[Install]
+WantedBy=multi-user.target

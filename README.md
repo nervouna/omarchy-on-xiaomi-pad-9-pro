@@ -58,6 +58,8 @@ The port runs on the stock kernel and firmware, which set some hard limits:
   line): no systemd-oomd; zram + earlyoom instead. 8 GB is tight for heavy
   Electron apps; 12 GB is comfortable.
 - **No AF_ALG crypto sockets**: no iwd; NetworkManager instead.
+- **No SysV IPC**: stock `fakeroot` (and so `makepkg`/AUR builds) fails;
+  `fakeroot-tcp` from the AUR replaces it.
 - **No devtmpfs**: `/dev` is populated by mdev, with udev layered on top.
 - **Patched Aquamarine**: updating Hyprland means rebuilding Aquamarine with
   `patches/` (see [docs/maintenance.md](docs/maintenance.md)).

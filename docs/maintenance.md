@@ -39,7 +39,11 @@ of the old `.so` **outside** `/usr/lib` (ldconfig picks up stray `libaquamarine.
 ## Packages the overlay expects
 
 Installed by hand (the overlay doesn't install packages): `zram-generator` (masked, kept
-for reference), `earlyoom`, `archlinuxarm-keyring`. (`xorg-xrdb` + `libxmu` got installed for a reverted Xft.dpi preset; harmless.)
+for reference), `earlyoom`, `archlinuxarm-keyring`, `btop` (both in Omarchy's base list
+but missing here), and from the AUR `fakeroot-tcp` (the kernel has no SysV IPC, so stock
+`fakeroot` can't work; it has to be bootstrapped once without fakeroot) and `yay-bin`.
+Omarchy's own repo (`[omarchy]`, pkgs.omarchy.org) is enabled by
+`/usr/lib/loa/setup-omarchy-repo.sh` (apply-overlay, personalize). (`xorg-xrdb` + `libxmu` got installed for a reverted Xft.dpi preset; harmless.)
 The golden image already contains them; check with `pacman -Q` after other installs.
 
 ## Things outside pacman

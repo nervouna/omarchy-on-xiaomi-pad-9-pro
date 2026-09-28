@@ -1188,3 +1188,37 @@ Source: CodeLinaro display-drivers `display-kernel.lnx.12.13.r1-rel` (src/displa
   connected 54 s after boot, everything automatic; owner: "complies fully".
 - First tablet still runs an older loa-pen (tx_mac pairing, eventN tracking): apply-overlay
   next time it is plugged in.
+
+### 2026-09-28: spontaneous resets on USB-C dock/monitor attach; crash capture
+
+- Symptom (owner, a full working day on the 12 GB tablet): connecting a monitor or
+  the office USB-C dock sometimes resets the tablet. Four events: first direct
+  USB-C->DP at home, first attach of the dock, a re-plug at 15:46 (screen on, log
+  ends ~4 s after the plug while the dock's USB devices enumerate), and 21:12->21:18
+  (on battery, screen off, s2idle cycling; the next boot starts with the dock
+  attached, so most likely plugged into the sleeping tablet).
+- PMIC PON log: `Reset Trigger: PS_HOLD` = the SoC reset itself (panic/watchdog/
+  firmware), not a power loss. Common factor: a Type-C attach entering DP Alt Mode.
+  Not the DP link-rate change (events 1-2 predate it), not the dock's NIC (event 1
+  had no dock), not suspend (event 3 was with the screen on). Root cause still open.
+- No panic text anywhere: pstore empty, systemd-pstore disabled, the 500M journal
+  held ~5 hours (driver log storm) and synced every 5 min, so the last seconds
+  before a reset never reached disk.
+- Crash capture, tested with `echo c > /proc/sysrq-trigger`:
+  - reboot mode warm (/sys/kernel/reboot/mode; tmpfiles rule) alone: PMIC shows
+    WARM_RESET, but the ramoops console is still wiped;
+  - + download_mode=1 (opt-in loa-crashdump.service, flag /etc/loa/crashdump-on-panic):
+    panic -> Apps watchdog bite -> warm reset with RAM kept -> normal boot, and
+    systemd-pstore archived console-ramoops-0 with the marker and "Kernel panic -
+    not syncing". No CrashDump screen this time, no buttons needed.
+  - journald: SystemMaxUse 2G (about a day), SyncIntervalSec 10s.
+  Armed on the 12 GB tablet. Next: reproduce with the dock (screen on, then asleep).
+- The owner's Codex session changes, reviewed: golden image gets btop, yay-bin and
+  fakeroot-tcp (the GKI has no SysV IPC, /proc/sysvipc absent, so stock fakeroot and
+  makepkg fail; AUR packages repacked from the installed files into images/pkgs/,
+  git-ignored) and Omarchy's [omarchy] pacman repo (setup-omarchy-repo.sh, re-run by
+  personalize.sh after its keyring reset). Kept out: the 12 GiB zram override + swap
+  file (sized to one tablet), dp-hbr3.service (raises the vendor DP link cap
+  540000->810000 for 4K60 over 2-lane docks; revisit after the reset bug) and all
+  personal preferences. make-image.sh now excludes those and dereferences dotfiles
+  that are symlinks into a repo outside the home whitelist.
