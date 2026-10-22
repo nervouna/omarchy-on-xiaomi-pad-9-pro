@@ -1366,3 +1366,8 @@ Source: CodeLinaro display-drivers `display-kernel.lnx.12.13.r1-rel` (src/displa
 - Builder updated (packages instead of the copied tree, no ttfx build, Mesa without
   LLVM, user config from /etc/skel), **not built yet**. The 8 GB tablet still runs the
   copied tree.
+- Patch 0004 (audio output slider) dropped: upstream's `volumeSink` returns `sink`
+  when `sink` is empty, so whenever `hasOutput` holds, `!!sink` holds too; the
+  patch only mattered on top of the omarchy-android PRoot changes (found while
+  preparing the upstream PRs for 0003 and 0005). Reversed on the 12 GB tablet
+  (Panel.qml matches the package again).
