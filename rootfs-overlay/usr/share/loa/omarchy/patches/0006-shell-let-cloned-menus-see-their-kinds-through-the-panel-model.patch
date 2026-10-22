@@ -1,0 +1,41 @@
+From f3fe0b19b290281a870072f503a8032f44f26c24 Mon Sep 17 00:00:00 2001
+From: Xiaoyu Guan <xiaoyuguan@hotmail.com>
+Date: Fri, 23 Oct 2026 01:42:31 +0800
+Subject: [PATCH] shell: let cloned menus see their kinds through the panel
+ model
+
+The panel Instantiator hands a plugin's manifest to pluginShellFor() as
+modelData, where `kinds` has become a QVariantList. Array.isArray() is
+false for it, so manifestHasKind(manifest, "menu") failed on that path:
+a cloned or third-party menu got a scoped shell whose appLibrary is null,
+mergeAppRows() returned early and the Apps submenu showed "Nothing here
+yet". Check for an indexable list instead of a JS array.
+
+Fixed upstream on quattro by #13439, which reads the manifest from the
+registry instead (v4.5.0-rc1); this carries the smaller change for 4.0.x.
+---
+ shell/shell.qml | 8 ++++++--
+ 1 file changed, 6 insertions(+), 2 deletions(-)
+
+diff --git a/shell/shell.qml b/shell/shell.qml
+index e7df0006..0b84a8d1 100644
+--- a/shell/shell.qml
++++ b/shell/shell.qml
+@@ -350,8 +350,12 @@ ShellRoot {
+   }
+ 
+   function manifestHasKind(manifest, kind) {
+-    return !!manifest && Array.isArray(manifest.kinds)
+-      && manifest.kinds.indexOf(kind) !== -1
++    // A manifest read from a model (the panel Instantiator's modelData) carries
++    // kinds as a QVariantList: it indexes like an array, but Array.isArray()
++    // is false for it, which left cloned menus without an app library.
++    var kinds = manifest ? manifest.kinds : null
++    return !!kinds && typeof kinds !== "string" && typeof kinds.indexOf === "function"
++      && kinds.indexOf(kind) !== -1
+   }
+ 
+   function pluginHasBarCapabilities(manifest) {
+-- 
+2.54.0 (Apple Git-157)
+

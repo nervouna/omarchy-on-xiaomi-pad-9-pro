@@ -30,6 +30,13 @@ What the tablet adds (all in `rootfs-overlay/`):
 | plymouth units masked (`/etc/systemd/system/plymouth-*.service` -> /dev/null) | `omarchy-settings` depends on plymouth; with no initramfs or LUKS here it would only take DRM master from the stage 1 splash and Hyprland at boot and shutdown |
 | `/usr/lib/loa/setup-omarchy-repo.sh` + the user hook `~/.config/omarchy/hooks/pre-refresh-pacman.d/loa-device` | Omarchy 4.0.6's `omarchy-refresh-pacman` (Update > Channel, reinstall) copies its **x86_64** template on ARM (no `[alarm]`, `[multilib]`); the hook puts back the aarch64 channel and `IgnorePkg` before it upgrades |
 
+The post-upgrade script only notices a patch that stops applying. A patch whose
+upstream fix leaves the patched lines alone keeps applying, so drop these by hand:
+
+- `0006-shell-let-cloned-menus-see-their-kinds-through-the-panel-model.patch`:
+  once Omarchy 4.5 is installed (fixed there by omacom/omarchy#13439). It only
+  matters while a cloned menu plugin is enabled.
+
 Before a large update, tar the root to `/var/backups` (ext4: Omarchy's Snapper
 snapshots don't exist here), as in "Backups" below without piping it off the
 tablet. After it, reboot and check the desktop, touch, audio and Wi-Fi.

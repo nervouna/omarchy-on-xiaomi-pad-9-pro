@@ -1385,3 +1385,32 @@ Source: CodeLinaro display-drivers `display-kernel.lnx.12.13.r1-rel` (src/displa
 - Fix: loa.lua no longer touches Super+Space, so Omarchy's default applies
   (4.0.6: `omarchy-menu toggle`). The issue's workaround (the same command bound in
   ~/.config/hypr/bindings.lua) is redundant now and can stay or go.
+
+### 2026-10-23: empty Apps list in a cloned menu, Omarchy patch 0006 (issue #2)
+
+- Symptom (12 GB tablet, Omarchy 4.0.6 packages): the menu's Apps submenu showed
+  "Nothing here yet". The issue suspected Quickshell 0.3.2.r7, upgraded in the same
+  transaction.
+- Not Quickshell: its DesktopEntries code changed only by trimming lines while
+  parsing (0.3.1..2b4501a), and a standalone `quickshell -n` probe run with the shell's
+  environment loads 52 entries within 5 s. (Reading `DesktopEntries.applications`
+  once starts the scan, so a probe that reads it only once reports 0; upstream
+  #15849 fell for that.)
+- Cause: the user's config enables a clone of the menu (`omarchy plugin clone
+  omarchy.menu`), which disables `omarchy.menu` and takes over `omarchy menu`.
+  Since Omarchy 4.0.3 a plugin that isn't first-party gets a scoped shell API,
+  and `appLibrary` only when `manifestHasKind(manifest, "menu")` holds.
+  The panel Instantiator passes the manifest from `modelData`, where `kinds` is a
+  QVariantList; `Array.isArray()` is false for it, so the clone's `appLibrary` is
+  null and `mergeAppRows()` returns before adding a row. The copied 158e8cf tree
+  predated the scoped API, so the switch to the packages exposed it. Upstream:
+  omacom/omarchy#10876, #12881, #15851 and others; fixed on quattro by #13439
+  (the delegate reads the manifest from the registry), first in v4.5.0-rc1.
+- Patch 0006 (shell/shell.qml): `manifestHasKind()` accepts any indexable list,
+  not only a JS array. Applied by the post-upgrade script; a second run is a no-op.
+- Verified on the 12 GB tablet with the clone enabled: the shell that was still
+  running unpatched showed "Nothing here yet"; after `omarchy-restart-shell` the
+  same clone lists the apps. No new warnings in the shell log.
+- 0006 still applies cleanly to v4.5.0-rc1 (`manifestHasKind()` is unchanged
+  there), so the post-upgrade script will not flag it: drop it by hand once
+  Omarchy 4.5 is installed (see docs/maintenance.md).
