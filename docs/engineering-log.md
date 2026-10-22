@@ -1414,3 +1414,17 @@ Source: CodeLinaro display-drivers `display-kernel.lnx.12.13.r1-rel` (src/displa
 - 0006 still applies cleanly to v4.5.0-rc1 (`manifestHasKind()` is unchanged
   there), so the post-upgrade script will not flag it: drop it by hand once
   Omarchy 4.5 is installed (see docs/maintenance.md).
+
+### 2026-10-23: omarchy-font-set restart reminder, Omarchy patch 0007 (issue #3)
+
+- Symptom (Omarchy 4.0.6 packages): `omarchy-font-set` with Ghostty running prints
+  the Ghostty PIDs and then omarchy-notification-send's usage message; the
+  "restart Ghostty" reminder never shows. The font itself is set.
+- Cause: upstream v4.0.6 passes `-g` with an empty glyph, so the headline is taken
+  as the glyph and no headline is left. `pgrep -x` without redirection prints the
+  matched PIDs. Upstream restored the glyph (U+E659) on quattro, first in
+  v4.5.0-rc1; the pgrep output is unchanged there.
+- Patch 0007 (bin/omarchy-font-set, base /usr): the same glyph, and pgrep output
+  sent to /dev/null. The glyph lines differ in v4.5.0-rc1 (i18n strings), so the
+  post-upgrade script reports 0007 as no longer applying once 4.5 lands: drop it
+  then.
