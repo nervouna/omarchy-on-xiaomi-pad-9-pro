@@ -1428,3 +1428,13 @@ Source: CodeLinaro display-drivers `display-kernel.lnx.12.13.r1-rel` (src/displa
   sent to /dev/null. The glyph lines differ in v4.5.0-rc1 (i18n strings), so the
   post-upgrade script reports 0007 as no longer applying once 4.5 lands: drop it
   then.
+- Verified on this tablet: with 0007 applied, pgrep is quiet and the glyph is
+  passed, but the reminder still failed with "Call failed: The name is not
+  activatable". `omarchy-restart-shell` returns once the shell answers ping, before
+  its notification plugin owns org.freedesktop.Notifications; a toast sent right
+  after a stock restart reproduces it, and a toast sent 20 s later works.
+- Patch 0008 (bin/omarchy-restart-shell, base /usr): backport of upstream 177d572
+  and 43b9116. When the service was up before the restart, wait up to 2 s for it
+  to return. Verified: restart with the patched script, then a toast succeeds.
+  v4.5.0-rc1 restructured the readiness loop, so 0008 stops applying there and the
+  post-upgrade script flags it.

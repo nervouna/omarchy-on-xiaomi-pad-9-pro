@@ -1,0 +1,62 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Xiaoyu Guan <xiaoyuguan@hotmail.com>
+Date: Fri, 23 Oct 2026 02:20:00 +0800
+Subject: [PATCH] restart-shell: wait for the notification service
+
+The shell answers ping before its notification plugin owns
+org.freedesktop.Notifications, so a toast sent right after
+omarchy-restart-shell (omarchy-font-set's restart reminder) fails with
+"The name is not activatable".
+
+Backport of upstream 177d572 and 43b9116: when the service was running
+before the restart, wait up to two seconds for it to come back.
+---
+ bin/omarchy-restart-shell | 25 +++++++++++++++++++++++++
+ 1 file changed, 25 insertions(+)
+
+diff --git a/bin/omarchy-restart-shell b/bin/omarchy-restart-shell
+index 74a1712..caa39b0 100755
+--- a/bin/omarchy-restart-shell
++++ b/bin/omarchy-restart-shell
+@@ -61,6 +61,21 @@ relock_session() {
+   return 1
+ }
+ 
++# A short timeout keeps an unresponsive user bus from stalling the restart;
++# busctl would otherwise wait 25 seconds per probe.
++notifications_ready() {
++  [[ $(busctl --user --timeout=1s call org.freedesktop.DBus /org/freedesktop/DBus \
++    org.freedesktop.DBus NameHasOwner s org.freedesktop.Notifications 2>/dev/null) == "b true" ]]
++}
++
++# Core IPC can answer before the notification plugin has registered its bus
++# name. Restore an existing notification service before callers send their
++# toasts; a disabled service need not appear.
++notifications_were_running=0
++if notifications_ready; then
++  notifications_were_running=1
++fi
++
+ # Each kill stops the oldest matching instance and only returns once it has
+ # fully exited. A large bar can take longer than a few seconds to tear down,
+ # so the client gets time to see that through, and the wait below covers a
+@@ -94,6 +109,16 @@ while (( SECONDS < deadline )); do
+       echo "Omarchy shell restarted, but the session lock was not re-secured." >&2
+       exit 1
+     fi
++    if (( notifications_were_running )); then
++      for (( attempt = 0; attempt < 20; attempt++ )); do
++        notifications_ready && break
++        sleep 0.1
++      done
++      if ! notifications_ready; then
++        echo "Omarchy shell restarted, but its notification service did not become ready." >&2
++        exit 1
++      fi
++    fi
+     # Invitation toasts (like Voxtype/fingerprint setup) die with the old
+     # shell, and their notify-send waiters hang forever: the dying server
+     # never emits NotificationClosed. A still-running omarchy-*-invitation
+-- 
+2.56.0
+
