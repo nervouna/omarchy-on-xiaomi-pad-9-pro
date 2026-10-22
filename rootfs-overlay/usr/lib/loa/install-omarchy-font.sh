@@ -5,6 +5,8 @@
 # Omarchy's files without that step, so the glyphs fell back to other fonts.
 # Linked (not copied) so Omarchy updates to the font carry through. Idempotent.
 set -e
+# The omarchy-settings package installs the font itself.
+pacman -Qq omarchy-settings >/dev/null 2>&1 && exit 0
 SRC=/usr/share/omarchy/default/fonts/omarchy/omarchy.ttf
 DST=/usr/share/fonts/omarchy/omarchy.ttf
 [ -f $SRC ] || { echo "no $SRC"; exit 0; }

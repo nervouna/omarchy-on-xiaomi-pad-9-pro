@@ -1,0 +1,13 @@
+# The KGSL Mesa in /opt/omarchy-android/mesa lives outside pacman. Builds made
+# with llvmpipe link one libLLVM.so.N, which an llvm-libs major upgrade deletes:
+# keep a copy next to that Mesa first (the session's LD_LIBRARY_PATH covers it).
+[Trigger]
+Operation = Upgrade
+Operation = Remove
+Type = Package
+Target = llvm-libs
+
+[Action]
+Description = Keeping the libLLVM that the KGSL Mesa links...
+When = PreTransaction
+Exec = /usr/lib/loa/mesa-keep-llvm.sh

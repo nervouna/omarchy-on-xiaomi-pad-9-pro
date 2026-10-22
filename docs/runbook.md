@@ -33,9 +33,10 @@ exactly that build.
 builder/build-image.sh [OUTDIR]        # as root on the ARM64 build machine; ~30 min
 ```
 
-It installs Arch Linux ARM packages (`builder/packages.txt`) into an empty root,
-Omarchy at a pinned commit with `patches/omarchy/`, Mesa with the KGSL backend,
-our patched Aquamarine and `ttfx` (built from pinned sources, `builder/pins.conf`),
+It installs packages (`builder/packages.txt`) from Omarchy's aarch64 stable channel
+into an empty root, Omarchy itself included (`omarchy`, `omarchy-settings`), plus
+Mesa with the KGSL backend and our patched Aquamarine (built from pinned sources,
+`builder/pins.conf`),
 then this repo's overlay through the same script `apply-overlay.sh` uses. Output:
 `omarchy-scratch-DATE.img.zst` (16 GiB ext4, ~2.3 GiB compressed). The image
 carries **no Xiaomi/Qualcomm files**: on its first boot, stage 1 copies the
@@ -145,8 +146,9 @@ activation. Leave Android at least 16–20 GiB: its OTAs stage into userdata.
 
 - Re-apply LoA files at any time: `tools/apply-overlay.sh`.
 - Coding agents: `mise install` (Omarchy manages them with mise).
-- Updates: see [maintenance.md](maintenance.md). Never update Hyprland without
-  rebuilding the patched Aquamarine.
+- Updates: `omarchy update`, like any Omarchy install; what the tablet adds is in
+  [maintenance.md](maintenance.md). A Hyprland that needs a newer Aquamarine stops
+  the update until the patched Aquamarine is rebuilt.
 
 ## Recovery
 

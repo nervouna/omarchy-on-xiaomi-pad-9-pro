@@ -1,0 +1,4 @@
+# Upstream Omarchy migrations that must not run on this tablet. Marked as done
+# for every Omarchy user by /usr/lib/loa/omarchy-post-upgrade.sh whenever the
+# omarchy packages are installed or upgraded. Format: <id>  <reason>
+1788124236  disables sshd when the Omarchy user has no authorized key; the tablet's USB SSH (root, key-only) is its recovery path

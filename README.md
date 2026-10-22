@@ -122,7 +122,7 @@ You need your own SSH key in `keys/` (the repo ships none) and the stock
 | `user-defaults/` | Files the user may customise (hypridle, Chromium flags, fcitx5 profile): installed only if missing, never overwritten |
 | `builder/` | From-scratch root image builder: package list, pinned sources, build scripts |
 | `tools/` | Mac-side scripts: `tssh` (SSH over USB), install/image/repartition/personalize, `build.sh` for the native helpers (`tools/src`) |
-| `patches/` | Aquamarine patch (split primary plane, DMA-heap scanout, forced MODE_ID) and the Omarchy patch series |
+| `patches/` | Aquamarine patch (split primary plane, DMA-heap scanout, forced MODE_ID); the small Omarchy patches live in `rootfs-overlay/usr/share/loa/omarchy/patches/` and are re-applied after each Omarchy update |
 | `reference/` | Captures from stock Android (keyboard/pen packets, DRM/SDE state, logcat excerpts) and kernel crash logs |
 | `docs/` | Runbook, status, maintenance, and the full engineering log |
 | `images/`, `keys/` | Local only (git-ignored): boot and root images, your SSH key |

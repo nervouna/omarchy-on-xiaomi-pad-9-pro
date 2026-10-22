@@ -1298,3 +1298,71 @@ Source: CodeLinaro display-drivers `display-kernel.lnx.12.13.r1-rel` (src/displa
 - Deployed by hand on the 12 GB tablet (loa-sleepd, patch applied in /usr/share/omarchy).
 - Open: s2idle drains ~3.7 %/h, about the same as staying awake with the screen off;
   the dwc3 suspend refusal.
+
+### 2026-10-22: Omarchy from its own packages; `omarchy update` follows upstream
+
+- Why the tablets could not follow upstream: Omarchy was a copy of commit 158e8cf
+  (4.0.0.alpha, 2026-08-29) in /usr/share/omarchy that no package owned, 974 commits
+  behind. Omarchy 4 now ships as pacman packages with an aarch64 stable channel:
+  `omarchy` + `omarchy-settings` 4.0.6 at pkgs.omarchy.org/stable/aarch64, and
+  Omarchy's Arch Linux ARM snapshot at arm-stable-mirror.omarchy.org (about a day
+  behind ALARM; 2.7 MB/s from here, TUNA 30 MB/s).
+- Found broken on the 12 GB tablet first: on 10-21 the copied tree's
+  `omarchy-refresh-pacman` had copied the **x86_64** template over /etc/pacman.conf
+  ([multilib], stable-mirror.omarchy.org, no [alarm], IgnorePkg gone); its
+  `pacman -Syyuu` failed at the sync, so nothing was installed. 4.0.6's
+  refresh-pacman still does this on ARM (upstream master has per-platform templates).
+- Upstream's `omarchy-hw-platform` reports this tablet as `aarch64-qualcomm` (the
+  Android device tree's root is `qcom,alor-mtp qcom,alor ...`), i.e. a Snapdragon X
+  laptop: its Qualcomm install steps (Windows firmware extraction, UKI device trees,
+  blacklisting qcom_q6v5_pas, Limine kernel parameters) must never run here.
+- Reviewed the 30 migrations between 158e8cf and 4.0.6. One is dangerous here:
+  1788124236 disables sshd when the Omarchy user has no authorized key (our SSH is
+  root, key-only) -> skipped. 1787865477 drops the user from `input`: fine, Hyprland
+  opens input devices through seatd (`LIBSEAT_BACKEND=seatd`). The Limine, kernel and
+  NVIDIA ones exit on this hardware.
+- The KGSL Mesa in /opt links `libLLVM.so.22.1` (llvmpipe); this upgrade brings
+  llvm-libs 23, which drops it, and the GPU stack would have failed to load. A copy of
+  the old library now sits in /opt/omarchy-android/mesa/root/usr/lib (on the session's
+  LD_LIBRARY_PATH; versioned soname, no clash), and 20-loa-mesa-keep-llvm.hook does
+  that by itself before any llvm-libs upgrade (simulated: copies it). The builder now
+  builds Mesa without LLVM. SPIRV-Tools is used only through its C API, unaffected.
+- The switch (12 GB tablet): root tar to /var/backups/loa-pre-quattro-20261022.tar.zst
+  (9.3 GB); pacman.conf = Omarchy's aarch64 stable template + `IgnorePkg = aquamarine`;
+  the 96 migrations of the copied tree marked done; old tree moved to
+  /var/backups/omarchy-pinned-158e8cf; one transaction `pacman -Syu omarchy
+  omarchy-settings --ask 5 --overwrite ...` (285 packages, 1.7 GB: systemd 262.1,
+  Qt 6.12, LLVM 23, Hyprland 0.56.2-7 from [omarchy], Quickshell 0.3.2,
+  ttf-jetbrains-mono-nerd -> -basic, plus plymouth, sddm, xorg-server as new
+  dependencies). `--ask 5` = remove the conflicting font, and do NOT install an
+  IgnorePkg package. First attempt stopped at the file-conflict check
+  (/etc/fonts/conf.d/50-omarchy.conf), nothing changed. Then the 29 remaining
+  migrations as the user (sudo without password only for that run).
+- Device side, in the overlay:
+  - 10-loa-aquamarine-guard.hook: aborts any transaction that would replace our
+    patched Aquamarine (pacman installs an IgnorePkg package anyway under
+    --noconfirm when a dependency needs it). Tested: `pacman -S aquamarine` aborts.
+  - 95-loa-omarchy.hook -> omarchy-post-upgrade.sh: re-applies the Omarchy patches
+    (now rootfs-overlay/usr/share/loa/omarchy/patches/0003-0005; 0001/0002 were
+    PRoot-only and are dropped; none is upstream yet), marks migrations-skip, lists
+    pending migrations that touch boot/modules/sshd/groups, removes the copied
+    install's /usr/local/bin links. bin/ in the package is links to /usr/bin, so bin/
+    patches apply at /usr. Pitfalls: patch's default fuzz applied 0003 a second time
+    in another function; `--batch` "un-reverses" a patch by itself and made the
+    already-applied check pass on an unpatched file. Now `-f --fuzz=0`, reverse check
+    first; verified applied once, idempotent over three runs.
+  - setup-omarchy-repo.sh puts back the aarch64 channel when it finds an x86
+    template, called by the user hook pre-refresh-pacman.d/loa-device. Tested by
+    copying 4.0.6's x86 template in: result identical to before.
+  - plymouth (an omarchy-settings dependency) masked: no initramfs or LUKS here, and
+    its boot/shutdown units would take DRM master from our stage 1 splash and Hyprland.
+- Reboot: all LoA services active, no failed units, Hyprland on Adreno 829 (KGSL
+  libgallium + the copied libLLVM 22 mapped), 18 input devices open without the
+  `input` group, Wi-Fi up; Omarchy 4.0.6 shell renders. `omarchy-update-available`:
+  up to date; no pending migrations.
+- Also seen: Wi-Fi was soft-blocked after the earlier reboot (systemd-rfkill restored
+  the state loa-sleepd leaves during sleep); two critical "Battery at 2 %" test
+  notifications from 21:59/22:08 come back after every reboot (stored, no expiry).
+- Builder updated (packages instead of the copied tree, no ttfx build, Mesa without
+  LLVM, user config from /etc/skel), **not built yet**. The 8 GB tablet still runs the
+  copied tree.

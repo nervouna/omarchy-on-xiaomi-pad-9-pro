@@ -37,6 +37,7 @@ marked *user* were confirmed by looking at, touching or listening to the tablet.
 | App launching (uwsm) | works (*user*) |
 | Charging: battery auth (batterysecret), PPS fast charge via charge pumps | works: ~34 W with a Xiaomi 55 W adapter; adapter auth (full power) in progress |
 | Omarchy setup menu (nvim) and default-agent picker (mise; agents via `mise use -g`) | works |
+| Omarchy updates the upstream way (`omarchy update`: Omarchy's own aarch64 packages, its ALARM snapshot, its migrations) | works on the 12 GB tablet (4.0.6, 2026-10-22); the 8 GB tablet still runs the copied 158e8cf tree |
 | Xiaomi Focus Pencil Pro: BLE pairing, pointer (hover/tap/drag), double tap = right click | works (*user*); pinch/swipes unused for now; motion sensors, haptics, pressure open |
 | Ambient light sensor (auto-brightness, own SSC client) | works (*user*) |
 | Cameras, modem, other sensors (auto-rotate) | not attempted |
@@ -93,8 +94,8 @@ fastboot flash init_boot_<slot> images/init_boot-stock-OS4.0.5.0.img
   asleep), about the same as staying awake with the screen off, so suspend
   saves little. Also once (2026-10-10) dwc3 refused every suspend for a day
   with no USB power attached. Neither investigated yet.
-- Screensaver: works where `ttfx` is installed (the builder compiles it; the
-  older installs toggled it off). Omarchy patch 0005 keeps it from relighting a
+- Screensaver: works where `ttfx` is installed (Omarchy's repo now ships an
+  aarch64 build; the older installs toggled it off). Omarchy patch 0005 keeps it from relighting a
   screen switched off with the power key. One already running when the screen
   goes off keeps animating until the next suspend (indefinitely while
   charging); dismissing it would relight the screen. Tap-to-wake needs the

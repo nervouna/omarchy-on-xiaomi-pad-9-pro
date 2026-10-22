@@ -5,6 +5,8 @@
 # Omarchy tree copied to /usr/share/omarchy instead, so nothing put them there.
 # Naming = omarchy-webapp-install's icon_name_from_ref/safe_icon_name. Idempotent.
 set -euo pipefail
+# The omarchy-settings package installs the icons itself.
+pacman -Qq omarchy-settings >/dev/null 2>&1 && exit 0
 src=/usr/share/omarchy/applications/icons
 dst=/usr/share/icons/hicolor/512x512/apps
 safe_icon_name() {

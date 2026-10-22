@@ -2,16 +2,17 @@
 # Runs inside the disposable build root (builder/build-image.sh):
 #   Mesa with KGSL -> /build/out/mesa (installed as /opt/omarchy-android/mesa)
 #   patched Aquamarine -> /build/out/aquamarine-VER-REL-aarch64.pkg.tar.zst
-#   ttfx -> /build/out/ttfx-VER-1-aarch64.pkg.tar.zst
-# Args: JOBS AQUAMARINE_VERSION PKGREL TTFX_VERSION
+# Args: JOBS AQUAMARINE_VERSION PKGREL
 set -Eeuo pipefail
-JOBS=$1 AQVER=$2 AQREL=$3 TTFXVER=$4
+JOBS=$1 AQVER=$2 AQREL=$3
 O=/build/out; mkdir -p $O
 
-# Mesa: freedreno (GL) + turnip (Vulkan) on the KGSL kernel interface.
+# Mesa: freedreno (GL) + turnip (Vulkan) on the KGSL kernel interface. No LLVM
+# (no llvmpipe): this tree lives outside pacman, and a libLLVM it linked would
+# vanish with the next llvm-libs upgrade. Software fallback is the system Mesa.
 MESA=/opt/omarchy-android/mesa
 meson setup /build/mesa-build /build/mesa --prefix=/usr \
-    -Dplatforms=x11,wayland -Dgallium-drivers=freedreno,zink,virgl,llvmpipe \
+    -Dplatforms=x11,wayland -Dgallium-drivers=freedreno,zink,virgl -Dllvm=disabled \
     -Dgallium-va=disabled -Dgallium-mediafoundation=disabled \
     -Dvulkan-drivers=freedreno -Dvulkan-layers= -Degl=enabled -Dgles2=enabled \
     -Dglvnd=enabled -Dglx=dri -Dlibunwind=disabled -Dintel-rt=disabled \
@@ -57,12 +58,4 @@ for x in $(list 'Depends On'); do meta+=("depend=$x"); done
 mkpkg $P aquamarine "$AQVER-$AQREL" "$(field Description) (shuntian SDE split-primary build)" \
     "$(field URL)" BSD-3-Clause "${meta[@]}"
 
-# ttfx: Omarchy's screensaver effects (Omarchy only ships an x86_64 package).
-cd /build/ttfx
-cargo build --release --locked -j "$JOBS"
-T=/build/ttfx-pkg; rm -rf $T
-install -Dm755 target/release/ttfx $T/usr/bin/ttfx
-install -Dm644 LICENSE $T/usr/share/licenses/ttfx/LICENSE 2>/dev/null || true
-mkpkg $T ttfx "$TTFXVER-1" "Terminal text effects (Rust port of terminaltexteffects)" \
-    https://github.com/omacom/ttfx MIT depend=gcc-libs depend=glibc
 ls -l $O

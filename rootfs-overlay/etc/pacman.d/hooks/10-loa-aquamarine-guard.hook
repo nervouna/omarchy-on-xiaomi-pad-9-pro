@@ -1,0 +1,15 @@
+# Aquamarine on this tablet is our patched build (IgnorePkg). A plain upgrade
+# skips it, but when a new Hyprland needs a newer Aquamarine, pacman installs the
+# stock one anyway under --noconfirm, and the panel goes dark. Stop the whole
+# transaction instead; /usr/lib/loa/aquamarine-guard.sh says what to rebuild.
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Type = Package
+Target = aquamarine
+
+[Action]
+Description = Checking that aquamarine stays the patched LoA build...
+When = PreTransaction
+Exec = /usr/lib/loa/aquamarine-guard.sh
+AbortOnFail

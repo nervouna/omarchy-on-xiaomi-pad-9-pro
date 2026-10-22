@@ -1,0 +1,14 @@
+# After Omarchy's packages land: re-apply the LoA patches to Omarchy and mark
+# the upstream migrations that must not run on this tablet. Runs before
+# `omarchy update` gets to `omarchy-migrate`.
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Type = Package
+Target = omarchy
+Target = omarchy-settings
+
+[Action]
+Description = Applying LoA patches and migration policy to Omarchy...
+When = PostTransaction
+Exec = /usr/lib/loa/omarchy-post-upgrade.sh

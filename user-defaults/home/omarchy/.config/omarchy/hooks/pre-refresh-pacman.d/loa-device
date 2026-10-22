@@ -1,0 +1,4 @@
+# LoA: `omarchy-refresh-pacman` has just copied Omarchy's template over
+# /etc/pacman.conf. Put back this tablet's settings (aarch64 channel when the
+# template was the x86_64 one, IgnorePkg = aquamarine) before it upgrades.
+sudo /usr/lib/loa/setup-omarchy-repo.sh

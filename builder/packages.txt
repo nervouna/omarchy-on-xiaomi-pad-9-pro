@@ -100,6 +100,7 @@ luarocks
 man-db
 mariadb-libs
 mesa-utils
+mise-bin
 mobile-broadband-provider-info
 moonlight-qt
 mpv
@@ -113,6 +114,8 @@ noto-fonts
 noto-fonts-cjk
 noto-fonts-emoji
 nss-mdns
+omarchy
+omarchy-settings
 pacman-contrib
 pamixer
 pcre
@@ -156,12 +159,14 @@ tesseract-data-eng
 tldr
 tmux
 tree-sitter-cli
-ttf-jetbrains-mono-nerd
+ttf-jetbrains-mono-nerd-basic
+ttfx
 udiskie
 unzip
 usage
 util-linux
 uwsm
+voxtype-bin
 vulkan-icd-loader
 vulkan-tools
 which
@@ -181,5 +186,3 @@ xournalpp
 yt-dlp
 zbar
 zoxide
-mise-bin
-voxtype-bin

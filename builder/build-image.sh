@@ -88,12 +88,9 @@ fetch() {  # dir repo rev: shallow checkout of one exact commit or tag
     git -C "$1" fetch -q --depth 1 origin "$3"; git -C "$1" checkout -q FETCH_HEAD
 }
 log "sources"
-fetch "$W/src/omarchy" "$OMARCHY_REPO" "$OMARCHY_REV"
-git -C "$W/src/omarchy" -c user.name=builder -c user.email=builder@invalid am -q "$D"/patches/omarchy/*.patch
 fetch "$W/src/mesa" "$MESA_REPO" "$MESA_REV"
 fetch "$W/src/aquamarine" "$AQUAMARINE_REPO" "refs/tags/$AQUAMARINE_TAG"
 git -C "$W/src/aquamarine" apply "$D"/patches/aquamarine-0001-*.patch
-fetch "$W/src/ttfx" "$TTFX_REPO" "$TTFX_REV"
 
 log "build root (disposable)"
 mkdir -p "$W/builder"; root_up "$W/builder"
@@ -106,9 +103,9 @@ install_pkgs "$W/builder" base base-devel git meson ninja cmake pkgconf \
     libx11 libxcb byacc flex hyprwayland-scanner hyprutils libdisplay-info libinput \
     seatd pixman hwdata mesa aquamarine
 mkdir -p "$W/builder/build"
-cp -a "$W/src/mesa" "$W/src/aquamarine" "$W/src/ttfx" "$W/builder/build/"
+cp -a "$W/src/mesa" "$W/src/aquamarine" "$W/builder/build/"
 install -m 755 "$D/builder/in-builder.sh" "$W/builder/build/in-builder.sh"
-in_root "$W/builder" /build/in-builder.sh "$JOBS" "${AQUAMARINE_TAG#v}" "$AQUAMARINE_PKGREL" "$TTFX_VER"
+in_root "$W/builder" /build/in-builder.sh "$JOBS" "${AQUAMARINE_TAG#v}" "$AQUAMARINE_PKGREL"
 
 log "target root"
 mkdir -p "$W/root"; root_up "$W/root"
@@ -120,8 +117,6 @@ cp "$W/builder/build/out/"*.pkg.tar.zst "$R/var/tmp/loa-build/"
 ls "$D"/images/pkgs/*.pkg.tar.zst >/dev/null 2>&1 && cp "$D"/images/pkgs/*.pkg.tar.zst "$R/var/tmp/loa-build/"
 install -d "$R/opt/omarchy-android"
 cp -a "$W/builder/build/out/mesa" "$R/opt/omarchy-android/mesa"
-install -d "$R/usr/share/omarchy"
-cp -a "$W/src/omarchy/." "$R/usr/share/omarchy/"; rm -rf "$R/usr/share/omarchy/.git"
 (cd "$D" && tar -cf "$R/var/tmp/loa-build/loa-overlay.tar" rootfs-overlay user-defaults)
 install -m 755 "$D/tools/overlay-install.sh" "$R/var/tmp/loa-build/overlay-install.sh"
 install -m 755 "$D/builder/in-target.sh" "$R/var/tmp/loa-build/in-target.sh"
