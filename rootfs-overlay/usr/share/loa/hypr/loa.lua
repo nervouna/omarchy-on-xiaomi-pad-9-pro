@@ -43,10 +43,8 @@ hl.config({
 -- The power key is handled by loa-power-key.service (reads pmic_pwrkey directly;
 -- safe screen-off). The system menu stays in the Omarchy menu.
 hl.unbind("XF86PowerOff")
--- Open the Omarchy menu through Hyprland's global-shortcut protocol (the live
--- Quickshell object) instead of spawning the menu CLI chain.
-hl.unbind("SUPER + SPACE")
-o.bind("SUPER + SPACE", "Omarchy menu", hl.dsp.global("omarchy:menu"))
+-- Super+Space keeps Omarchy's own binding: the packaged shell registers no
+-- omarchy:menu global shortcut to rebind it to.
 
 -- Session processes ---------------------------------------------------------------
 hl.on("hyprland.start", function()

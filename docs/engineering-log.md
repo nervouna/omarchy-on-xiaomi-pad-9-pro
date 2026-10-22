@@ -1371,3 +1371,17 @@ Source: CodeLinaro display-drivers `display-kernel.lnx.12.13.r1-rel` (src/displa
   patch only mattered on top of the omarchy-android PRoot changes (found while
   preparing the upstream PRs for 0003 and 0005). Reversed on the 12 GB tablet
   (Panel.qml matches the package again).
+
+### 2026-10-23: Super+Space back on Omarchy's own binding (issue #1)
+
+- Symptom (12 GB tablet, after the switch to Omarchy 4.0.6 packages): Super+Space
+  did nothing; other SUPER bindings, `hyprctl reload` and `omarchy-menu toggle` by
+  hand all worked, so it looked like an input-method problem.
+- Cause: loa.lua rebound Super+Space to `hl.dsp.global("omarchy:menu")`. Only the
+  dropped PRoot patch 0001 registered that global shortcut (a `GlobalShortcut` in
+  shell.qml); the packaged shell has none, so `hyprctl globalshortcuts` lists no
+  `omarchy:menu` and the key goes nowhere. 0001 was not PRoot-only after all: the
+  overlay depended on that hunk.
+- Fix: loa.lua no longer touches Super+Space, so Omarchy's default applies
+  (4.0.6: `omarchy-menu toggle`). The issue's workaround (the same command bound in
+  ~/.config/hypr/bindings.lua) is redundant now and can stay or go.
