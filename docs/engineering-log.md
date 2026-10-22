@@ -1263,3 +1263,38 @@ Source: CodeLinaro display-drivers `display-kernel.lnx.12.13.r1-rel` (src/displa
 - Open: publishing images (CI on ARM runners), first-login password, property
   snapshot without Magisk, Omarchy 4's own install/config + install/user steps
   (neither the old tablets nor this image ran them).
+
+### 2026-10-22: battery ran flat twice -> loa-sleepd powers off at 3 %
+
+- 12 GB tablet, two brown-outs (PMIC PON: UVLO / SMPL). The kernel's "Trigger Android
+  shutdown for CAPACITY_LEVEL_CRITICAL" had no listener.
+  - 2026-09-30: a single 27.3 h s2idle sleep (xiaomi_power "suspend for 98411750 ms")
+    went from 100 % to 0 %; only the battery current limiter (bcl-lvl0, IRQ 36) woke it.
+  - 2026-10-11: awake all along. From 10-10 13:42 dwc3 refused every suspend ("failed
+    dev a600000.dwc3 at prepare", 3236 times) with no USB power; ~3.5 %/h, screen off.
+  - UPower recorded 2 % -> 1 % -> 0 % (/var/lib/upower/history-charge-*) but
+    CriticalPowerAction=Auto never acted (logind: CanHibernate/CanHybridSleep "no").
+- loa-sleepd: battery discharging at <= 3 % (checked every 30 s and before every
+  suspend) -> critical notification, power-off after 30 s unless a charger shows up
+  (the RTC alarm is cleared first so it can't power the tablet on). Every suspend arms
+  an RTC wake alarm (rtc-pm8xxx; its counter starts at 1970 but "+N" works): 30 min,
+  10 min at <= 10 %. The "resumed:" line now logs the battery level.
+- Tested with a copy that reports 2 % after 240 s of discharging and uses 60 s alarms:
+  - awake: powered off cleanly (PON "Reset Type: SHUTDOWN"; plugging the cable in boots
+    it via USB_CHARGER);
+  - asleep: RTC wakes every ~76 s ("wake irq 32, fired: ...rtc@6100"), and the check
+    right after one of them powered it off.
+- Found on the way: Omarchy's screensaver relit a screen switched off with the power
+  key. loa-power-key grabs the key, so Omarchy's idle timer still counted from the last
+  touch; at 150 s the idle service launched the screensaver, which turned DPMS back on
+  and counted as activity (restarting hypridle's 5 min screen-off). ->
+  patches/omarchy/0005: omarchy-launch-screensaver does nothing while every display is
+  off (checked: exit 1, DPMS stays off, no screensaver process). Not fixed: a
+  screensaver that is already up when the screen goes off keeps animating until the next
+  suspend; killing it would relight the screen (the idle service then runs
+  omarchy-system-wake -> DPMS on).
+- Idle timers (Omarchy's, hypridle's) only count awake time; a resume from s2idle is not
+  reported as activity.
+- Deployed by hand on the 12 GB tablet (loa-sleepd, patch applied in /usr/share/omarchy).
+- Open: s2idle drains ~3.7 %/h, about the same as staying awake with the screen off;
+  the dwc3 suspend refusal.

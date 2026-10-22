@@ -1,0 +1,32 @@
+From 45021539bffebac69bd120934c7e108684bc9891 Mon Sep 17 00:00:00 2001
+From: Xiaoyu Guan <xiaoyuguan@hotmail.com>
+Date: Thu, 22 Oct 2026 22:03:09 +0800
+Subject: [PATCH] screensaver: don't launch while every display is off
+
+A display switched off before the idle timeout (a tablet's power key, a
+closed cover) came back on when the idle service launched the screensaver
+and stayed lit until the next idle step, keeping the device from sleeping.
+---
+ bin/omarchy-launch-screensaver | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/bin/omarchy-launch-screensaver b/bin/omarchy-launch-screensaver
+index c66c41d..881cb85 100755
+--- a/bin/omarchy-launch-screensaver
++++ b/bin/omarchy-launch-screensaver
+@@ -10,6 +10,12 @@ if omarchy-toggle-enabled screensaver-off && [[ $1 != "force" ]]; then
+   exit 1
+ fi
+ 
++# Leave displays that are already off (DPMS, e.g. switched off with a power key
++# before the idle timeout) alone: launching the screensaver turns them back on.
++if [[ $1 != "force" ]] && hyprctl monitors -j | jq -e 'length > 0 and all(.[]; .dpmsStatus == false)' >/dev/null 2>&1; then
++  exit 1
++fi
++
+ focused=$(omarchy-hyprland-monitor-focused)
+ terminal=$(xdg-terminal-exec --print-id)
+ 
+-- 
+2.54.0 (Apple Git-157)
+

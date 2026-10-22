@@ -1,5 +1,5 @@
 [Unit]
-Description=LoA suspend daemon (deep suspend while the screen is off, on battery)
+Description=LoA suspend daemon (suspend while the screen is off, power-off on an empty battery)
 After=loa-desktop.service loa-power-key.service loa-bluetooth.service
 [Service]
 ExecStart=/usr/bin/python3 /usr/lib/loa/loa-sleepd.py

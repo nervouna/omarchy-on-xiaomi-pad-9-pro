@@ -1,6 +1,6 @@
 # Native Omarchy port status
 
-Last updated: 2026-09-28
+Last updated: 2026-10-22
 
 ## Goal
 
@@ -29,6 +29,7 @@ marked *user* were confirmed by looking at, touching or listening to the tablet.
 | Brightness control (panel0-backlight) | works (*user*) |
 | Screen-off (DPMS), idle screen-off after 5 min (hypridle, no lock) | works (*user*); wake by power key, not touch |
 | Suspend (s2idle) on battery while the screen is off (loa-sleepd) | works (*user*); wake by power key or keyboard key (not cover open) |
+| Low battery: clean power-off at 3 % (loa-sleepd; RTC wake-ups re-check while asleep) | works (tested with a simulated 2 %, awake and asleep) |
 | Keyboard backlight (auto in dim light, `loa-kbd-backlight`) | works (*user*: levels) |
 | Bluetooth (stock HAL + bridge -> BlueZ): pairing, A2DP headphones | works (*user*) |
 | Xiaomi pogo keyboard + touchpad (DSP relay, enable packets, libinput quirk) | works (*user*), incl. reattach |
@@ -88,9 +89,16 @@ fastboot flash init_boot_<slot> images/init_boot-stock-OS4.0.5.0.img
   battery only; Wi-Fi/Bluetooth are switched off for the sleep and return on
   wake. Opening the keyboard cover does not wake it (the DSP holds the hall
   event); press a key or the power button. Details in the engineering log.
-- Screensaver needs `ttfx` (Omarchy repo, not built for arm64 yet); disabled
-  via Omarchy's screensaver-off toggle. Tap-to-wake needs the Xiaomi touch
-  gesture mode.
+- Standby drain: s2idle drains about 3.7 %/h (a full battery lasted 27 h
+  asleep), about the same as staying awake with the screen off, so suspend
+  saves little. Also once (2026-10-10) dwc3 refused every suspend for a day
+  with no USB power attached. Neither investigated yet.
+- Screensaver: works where `ttfx` is installed (the builder compiles it; the
+  older installs toggled it off). Omarchy patch 0005 keeps it from relighting a
+  screen switched off with the power key. One already running when the screen
+  goes off keeps animating until the next suspend (indefinitely while
+  charging); dismissing it would relight the screen. Tap-to-wake needs the
+  Xiaomi touch gesture mode.
 - Headset jack not wired yet (needs a listening test for the PAL output id).
 - Omarchy's Wi-Fi UI expects iwd, which can't run (the kernel lacks AF_ALG).
   NetworkManager is used instead; the Omarchy network panel uses

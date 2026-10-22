@@ -7,7 +7,13 @@ Android-style policy instead of a one-shot `systemctl suspend`:
   - a wake-up that does not turn the screen back on (stray Wi-Fi, RTC...)
     -> back to sleep after RESLEEP s;
   - the power key and the cover's hall sensor wake it; loa-power-key turns the
-    screen on as usual.
+    screen on as usual;
+  - battery discharging at or below POWEROFF_PCT (checked every BATTERY_POLL s
+    and before every suspend) -> notify, clean power-off after POWEROFF_DELAY s
+    unless a charger shows up. UPower's CriticalPowerAction never fired here and
+    the tablet browned out (UVLO) at 0 % twice, once inside a 27 h sleep; s2idle
+    drains ~3.7 %/h, so an RTC alarm wakes every sleep after CHECK s (CHECK_LOW s
+    below LOW_PCT) to re-check.
 
 Device quirks handled around each suspend (NOTES.md, 2026-09-27):
   - Bluetooth: the stock HAL's UART blocks suspend and the HAL wedges if BlueZ
@@ -37,6 +43,10 @@ NOSLEEP = "/run/loa-nosleep"
 ADC = "c426000.spmi:qcom,pmk8550@0:vadc@9000"
 ADC_DRV = "/sys/bus/platform/drivers/qcom-spmi-adc5-gen3"
 BT_UNITS = ["bluetooth", "loa-bluetooth", "loa-bthal"]
+BATTERY = "/sys/class/power_supply/battery/"
+RTC_ALARM = "/sys/class/rtc/rtc0/wakealarm"
+POWEROFF_PCT, POWEROFF_DELAY, BATTERY_POLL = 3, 30, 30
+CHECK, CHECK_LOW, LOW_PCT = 1800, 600, 10
 
 def rd(path, default=""):
     try:
@@ -55,13 +65,16 @@ def log(*a):
 def screen_on():
     return rd(DPMS, "On") == "On"
 
+def as_user(*cmd):
+    env = {"XDG_RUNTIME_DIR": "/run/user/1000", "PATH": "/usr/bin",
+           "DBUS_SESSION_BUS_ADDRESS": "unix:path=/run/user/1000/bus"}
+    return subprocess.run(["setpriv", "--reuid=1000", "--regid=1000", "--init-groups",
+                           *cmd], env=env, capture_output=True, text=True, timeout=5)
+
 def audio_playing():
     if subprocess.run(["pidof", "agmplay"], capture_output=True).returncode == 0:
         return True                                  # speakers (loa-audio-relay)
-    env = {"XDG_RUNTIME_DIR": "/run/user/1000", "PATH": "/usr/bin"}
-    r = subprocess.run(["setpriv", "--reuid=1000", "--regid=1000", "--init-groups",
-                        "pactl", "list", "short", "sinks"], env=env,
-                       capture_output=True, text=True, timeout=5)
+    r = as_user("pactl", "list", "short", "sinks")
     return "RUNNING" in r.stdout                     # e.g. Bluetooth headphones
 
 def blocker():
@@ -140,9 +153,56 @@ def ws_fired(before, after):
             fired.append("%s+%d" % (k.split("#")[0], v - before[k]))
     return ", ".join(fired[:8]) or "-"
 
+def capacity():
+    try:
+        return int(rd(BATTERY + "capacity"))
+    except ValueError:
+        return None
+
+def battery_empty():
+    """-> the capacity if the battery is discharging at or below POWEROFF_PCT."""
+    cap = capacity()
+    if cap is not None and cap <= POWEROFF_PCT and rd(BATTERY + "status") == "Discharging":
+        return cap
+    return None
+
+def power_off_if_empty():
+    """Returns only if the battery isn't empty or a charger shows up in time."""
+    cap = battery_empty()
+    if cap is None:
+        return
+    log("battery %d%%, discharging -> power-off in %ds" % (cap, POWEROFF_DELAY))
+    try:
+        as_user("notify-send", "-u", "critical", "Battery at %d%%" % cap,
+                "Powering off in %d seconds. Connect a charger to cancel." % POWEROFF_DELAY)
+    except Exception as e:
+        log("notify failed:", e)
+    time.sleep(POWEROFF_DELAY)
+    if battery_empty() is None:
+        log("charging -> power-off cancelled")
+        return
+    try:
+        wr(RTC_ALARM, "0")                           # a PMIC RTC alarm could power it on
+    except OSError:
+        pass
+    run("systemctl", "poweroff")
+    while True:                                      # never suspend during the shutdown
+        time.sleep(60)
+
+def arm_wake_check():
+    """RTC alarm so that a long sleep wakes up to re-check the battery."""
+    cap = capacity()
+    secs = CHECK_LOW if cap is not None and cap <= LOW_PCT else CHECK
+    try:
+        wr(RTC_ALARM, "0")                           # a pending alarm can't be replaced
+        wr(RTC_ALARM, "+%d" % secs)
+    except OSError as e:
+        log("RTC alarm:", e)
+
 def suspend_once():
     """-> True if the system actually slept."""
     stop_radios()
+    arm_wake_check()
     os.sync()
     before = int(rd("/sys/power/suspend_stats/success", "0"))
     ws0 = ws_counts()
@@ -159,8 +219,9 @@ def suspend_once():
         if bad:
             log("connector thermistors %s/%s m°C disagree -> rebinding ADC" % (a, b))
             rebind_adc()
-        log("resumed: wake irq %s, fired: %s" % (
-            rd("/sys/power/pm_wakeup_irq", "?"), ws_fired(ws0, ws_counts())))
+        log("resumed: wake irq %s, fired: %s, battery %s%%" % (
+            rd("/sys/power/pm_wakeup_irq", "?"), ws_fired(ws0, ws_counts()),
+            rd(BATTERY + "capacity", "?")))
     return slept
 
 def main():
@@ -177,18 +238,23 @@ def main():
     log("loa-sleepd: grace %ds, re-sleep %ds" % (GRACE, RESLEEP))
     off_since = None
     wait = GRACE
+    next_check = 0
     while True:
         time.sleep(1)
+        now = time.monotonic()
+        if now >= next_check:
+            next_check = now + BATTERY_POLL
+            power_off_if_empty()
         if screen_on():
             off_since = None
             wait = GRACE
             start_radios()
             continue
-        now = time.monotonic()
         if off_since is None:
             off_since = now
         if now - off_since < wait:
             continue
+        power_off_if_empty()                         # monotonic time stops while asleep
         why = blocker()
         if why:
             off_since, wait = now, GRACE            # re-check later
