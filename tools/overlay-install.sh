@@ -121,6 +121,10 @@ chmod 600 /root/.ssh/authorized_keys 2>/dev/null || true
 K=$(uname -r)
 [ -e /usr/lib/loa/vendor-imported ] || [ ! -d /usr/lib/modules/$K/vendor ] || echo "pre-existing" > /usr/lib/loa/vendor-imported
 /usr/lib/loa/setup-omarchy-repo.sh
+# What the pacman hooks do for later installs, for what is already installed:
+# setuid sandbox helpers, the menu's install entries that can't work here.
+pacman -Qlq | grep '/chrome-sandbox$' | /usr/lib/loa/chrome-sandbox.sh
+python3 /usr/lib/loa/omarchy-menu-audit.py --apply || echo "the menu audit failed"
 # Warm reset after a panic (keeps the pstore log); the tmpfiles rule does it at boot.
 echo warm > /sys/kernel/reboot/mode 2>/dev/null || true
 systemctl restart systemd-journald

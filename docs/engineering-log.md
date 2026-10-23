@@ -1462,3 +1462,39 @@ that the overlay and the builder didn't provide:
   (`install/config/enable-services.sh`), ours doesn't run that installer. Added
   to the overlay's enables (its own command: a missing unit would fail the
   whole list).
+
+### 2026-10-24: Install menu entries that can't work on ARM; Electron sandbox helpers
+
+Installing Bitwarden from the Omarchy menu failed: `target not found: bitwarden`.
+Omarchy 4.0.6's menu offers its x86_64 catalogue on every machine, and its
+aarch64 stable repository lacks some of it.
+- An audit of all 90 Install entries (packages read from each entry's action and
+  the scripts it calls, checked with `pacman -Sp`) found 8 that can't install
+  here: Bitwarden, Spotify, RetroArch (`libretro-ppsspp`, `libretro-uae-git`),
+  Heroic, Minecraft, Lutris and Battle.net (wine, `umu-launcher`), and Edge
+  (AUR, x86_64 only). Three more install but can't work: Xbox Controllers
+  (`xpadneo-dkms`, no kernel headers for the vendor kernel), the Windows VM
+  (no `/dev/kvm`) and GeForce NOW (x86_64 Flatpak).
+- Upstream is closing most of it: on `quattro` (4.5) Windows, Edge, Minecraft,
+  GeForce NOW, Battle.net and Lutris are shown on x86 only, Spotify becomes its
+  web player on ARM, and the edge repository has aarch64 builds of `bitwarden`
+  and the two libretro cores (not yet in stable). Heroic is still offered on ARM.
+- `/usr/lib/loa/omarchy-menu-audit.py` now does that audit after every Omarchy
+  package change (95-loa-omarchy.hook) and on apply-overlay, and hides the
+  entries that can't work (`when: false`, original kept in `loaWhen`); the
+  device limits are listed in `/usr/share/loa/omarchy/menu-hide`. A hidden entry
+  comes back once its packages resolve. It follows `case` branches by argument
+  and `if omarchy-hw-...` tests by this machine, so 4.5's Spotify web-player
+  path counts as installable. 1.8 s on the 12 GB tablet.
+- Bitwarden: installed on the 12 GB tablet from the edge repository
+  (`pacman -U https://pkgs.omarchy.org/edge/aarch64/bitwarden-2026.10.1-1-aarch64.pkg.tar.zst`,
+  signature checked against Omarchy's key) plus `bitwarden-cli`. No updates
+  until stable carries it; the edge repository itself was not added.
+- It then aborted at start: "The SUID sandbox helper binary was found, but is not
+  configured correctly". The kernel has no user namespaces (`CONFIG_USER_NS` is
+  off), so Chromium and Electron rely on the setuid `chrome-sandbox`; Omarchy's
+  aarch64 Bitwarden ships it 0755 with all of `/opt/Bitwarden` owned by uid 1001
+  (its builder). x86 machines have user namespaces and never notice.
+  `30-loa-chrome-sandbox.hook` makes every packaged `chrome-sandbox` setuid
+  root and hands a tree owned by another uid to root; apply-overlay does the
+  same for what is already installed.

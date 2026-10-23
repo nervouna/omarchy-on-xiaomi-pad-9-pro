@@ -8,7 +8,9 @@
 #     as a Snapdragon laptop, aarch64-qualcomm);
 #  4. drop /usr/local/bin links into /usr/share/omarchy/bin left by the copied
 #     (pre-package) install: the package puts its commands in /usr/bin, and
-#     links to commands upstream has since removed would dangle.
+#     links to commands upstream has since removed would dangle;
+#  5. hide the menu's install entries that can't work on this tablet
+#     (omarchy-menu-audit.py: packages missing for aarch64, menu-hide).
 # Never fails the transaction.
 L=/usr/share/loa/omarchy
 
@@ -55,4 +57,6 @@ for f in /usr/local/bin/omarchy*; do
     [ -L "$f" ] || continue
     case $(readlink "$f") in /usr/share/omarchy/bin/*) rm -f "$f" ;; esac
 done
+
+python3 /usr/lib/loa/omarchy-menu-audit.py --apply || echo "LoA: WARNING: the menu audit failed"
 exit 0

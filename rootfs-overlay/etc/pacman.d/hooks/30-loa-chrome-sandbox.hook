@@ -1,0 +1,13 @@
+# Chromium and Electron apps need their sandbox helper setuid root here: the
+# kernel has no user namespaces. Some packages ship it without the bit.
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Type = Path
+Target = *chrome-sandbox
+
+[Action]
+Description = Making Chromium sandbox helpers setuid root...
+When = PostTransaction
+Exec = /usr/lib/loa/chrome-sandbox.sh
+NeedsTargets

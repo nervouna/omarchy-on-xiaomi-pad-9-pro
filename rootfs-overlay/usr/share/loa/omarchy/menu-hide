@@ -1,0 +1,7 @@
+# Omarchy menu entries that can't work on this tablet although their packages
+# install. Hidden for every user by /usr/lib/loa/omarchy-menu-audit.py, which
+# finds the entries whose packages don't install by itself.
+# Format: <menu id>  <reason>
+install.gaming.xbox-controllers  xpadneo-dkms builds a kernel module, and the vendor kernel ships no headers
+install.windows                  the Windows VM needs /dev/kvm and an x86 CPU (Omarchy 4.5 offers it on x86 only)
+install.gaming.geforce-now       its Flatpak is x86_64 only (Omarchy 4.5 offers it on x86 only)
