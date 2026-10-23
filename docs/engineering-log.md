@@ -1454,7 +1454,10 @@ that the overlay and the builder didn't provide:
   `/etc/systemd/user/<unit>` links, which shadowed the packaged units.
   apply-overlay removes the old links and the per-user enables, but only where
   the packaged units exist (not on a tablet still on the copied tree, which keeps
-  its links and needs the package switch anyway).
+  its links and needs the package switch anyway). The global enable also
+  reaches root's user manager (serial-console autologin, SSH): its bt-agent
+  competed for the default agent and its fcitx5 waited forever for a
+  WAYLAND_DISPLAY, so the LoA drop-ins add `ConditionUser=!@system`.
 - `avahi-daemon` (`<hostname>.local`): Omarchy's installer enables it
   (`install/config/enable-services.sh`), ours doesn't run that installer. Added
   to the overlay's enables (its own command: a missing unit would fail the
