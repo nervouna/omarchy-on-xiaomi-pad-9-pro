@@ -1438,3 +1438,22 @@ Source: CodeLinaro display-drivers `display-kernel.lnx.12.13.r1-rel` (src/displa
   to return. Verified: restart with the patched script, then a toast succeeds.
   v4.5.0-rc1 restructured the readiness loop, so 0008 stops applying there and the
   post-upgrade script flags it.
+
+### 2026-10-23: Omarchy's user units and avahi into the overlay
+
+An inventory of the 12 GB tablet against the overlay found device-level pieces
+that the overlay and the builder didn't provide:
+- `bt-agent.service` and `omarchy-fcitx5.service` were enabled by hand
+  (2026-09-26/27) through links in `~/.config/systemd/user/default.target.wants`
+  to `/etc/systemd/user/<unit>`, themselves links into the copied Omarchy tree.
+  Omarchy enables both for `graphical-session.target`, which this session never
+  reaches, and nothing in the overlay or the builder enabled them, so a fresh
+  image had no Bluetooth pairing agent and no input method. The overlay now
+  enables the packaged units (`omarchy-settings`, `/usr/lib/systemd/user`) for
+  every user in `/etc/systemd/user/default.target.wants`; apply-overlay removes
+  the old links, but only where the packaged units exist (not on a tablet still
+  on the copied tree).
+- `avahi-daemon` (`<hostname>.local`): Omarchy's installer enables it
+  (`install/config/enable-services.sh`), ours doesn't run that installer. Added
+  to the overlay's enables (its own command: a missing unit would fail the
+  whole list).

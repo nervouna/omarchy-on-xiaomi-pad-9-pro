@@ -84,6 +84,24 @@ for f in .config/pipewire/pipewire.conf.d/50-loa-speakers.conf .config/pipewire/
     n=$((n + 1)); echo "remove legacy $t (now in /etc)"
     [ $MODE = apply ] && { backup $t; rm -f $t; }
 done
+
+# 4b. Legacy: hand-made links for Omarchy's user units from the copied-tree days.
+# The packaged units live in /usr/lib/systemd/user and the overlay now enables
+# them for every user (/etc/systemd/user/default.target.wants), so the old
+# /etc/systemd/user/<unit> links into /usr/share/omarchy/default (which shadow
+# the packaged unit) and the per-user enables go. Left alone on a tablet still
+# on the copied tree, where the packaged units don't exist.
+for u in bt-agent.service omarchy-fcitx5.service; do
+    [ -f /usr/lib/systemd/user/$u ] || continue
+    t=/etc/systemd/user/$u
+    if [ -L $t ]; then case $(readlink $t) in /usr/share/omarchy/default/systemd/user/*)
+        n=$((n + 1)); echo "remove legacy $t (packaged unit in /usr/lib/systemd/user)"
+        [ $MODE = apply ] && { backup $t; rm -f $t; } ;; esac; fi
+    t=/home/omarchy/.config/systemd/user/default.target.wants/$u
+    [ -L $t ] && [ "$(readlink $t)" = /etc/systemd/user/$u ] || continue
+    n=$((n + 1)); echo "remove legacy $t (enabled for every user in /etc)"
+    [ $MODE = apply ] && { backup $t; rm -f $t; }
+done
 cd /; rm -rf $S
 
 if [ $MODE = diff ]; then echo "$n change(s) pending (nothing written)"; exit 0; fi
@@ -120,4 +138,7 @@ systemctl enable loa-mdev loa-modules loa-subsys loa-usb-gadget loa-thp loa-boot
     loa-binder loa-servicemanager loa-suspend loa-audiohal loa-audio-relay loa-mic-relay loa-power-key \
     loa-splash-off loa-thermalhal loa-bthal loa-bluetooth bluetooth loa-sscrpcd loa-keyboard \
     loa-autobrightness loa-sleepd earlyoom loa-zram loa-batterysecret loa-pen systemd-pstore loa-crashdump loa-vendor-import >/dev/null 2>&1
+# avahi-daemon (mDNS, <hostname>.local): Omarchy's installer enables it; ours
+# doesn't run that installer. On its own: a missing unit fails the whole enable.
+systemctl enable avahi-daemon >/dev/null 2>&1 || echo "avahi-daemon not installed: no <hostname>.local"
 echo "overlay applied ($n change(s))"
