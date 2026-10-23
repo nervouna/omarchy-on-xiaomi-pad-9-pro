@@ -1476,9 +1476,9 @@ aarch64 stable repository lacks some of it.
   (`xpadneo-dkms`, no kernel headers for the vendor kernel), the Windows VM
   (no `/dev/kvm`) and GeForce NOW (x86_64 Flatpak).
 - Upstream is closing most of it: on `quattro` (4.5) Windows, Edge, Minecraft,
-  GeForce NOW, Battle.net and Lutris are shown on x86 only, Spotify becomes its
+  GeForce NOW, Battle.net, Lutris and Heroic are shown on x86 only, Spotify becomes its
   web player on ARM, and the edge repository has aarch64 builds of `bitwarden`
-  and the two libretro cores (not yet in stable). Heroic is still offered on ARM.
+  and the two libretro cores (not yet in stable).
 - `/usr/lib/loa/omarchy-menu-audit.py` now does that audit after every Omarchy
   package change (95-loa-omarchy.hook) and on apply-overlay, and hides the
   entries that can't work (`when: false`, original kept in `loaWhen`); the
