@@ -2,12 +2,28 @@
 
 [English](README.md) | **简体中文**
 
+![Xiaomi Pad 9 Pro](https://img.shields.io/badge/device-Xiaomi%20Pad%209%20Pro-lightgrey)
+![Host: macOS](https://img.shields.io/badge/host-macOS-lightgrey)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
+<!-- banner -->
+
 让 [Omarchy](https://omarchy.org)（Arch Linux ARM + Hyprland）**原生**运行在小米平板 9 Pro
 （代号 `shuntian`，高通 SM8845）上，开机直接进入桌面。不依赖 Android 框架，不是 Android 里的
 chroot，也不是 PRoot：平板在原厂 Android GKI 内核上直接运行 systemd、Hyprland 和 Omarchy
 桌面。Android 自带的厂商守护进程（音频、蓝牙、传感器、触控）在旁边一个小小的“服务孤岛”里运行。
 
-> **状态：开发中。** 已在两台测试平板上日常使用。根文件系统镜像可以从零构建；暂无预构建下载（见[路线图](#路线图)）。
+<!-- screenshots -->
+
+## 状态
+
+**开发中。** 已在作者的两台测试平板（8 GB 和 12 GB）上日常使用。适合拥有这款平板、熟悉解锁 Bootloader、Fastboot 和 Arch Linux 的人。需要原厂 ROM `OS4.0.5.0.XFPCNXM` 的小米平板 9 Pro、一台运行主机端脚本的 Mac、一台用来构建镜像的 ARM64 Arch Linux ARM 机器，以及一次 Magisk root；完整列表见[前提条件](#前提条件)。
+
+安装会刷写平板的分区。操作失误可能让平板无法启动，解锁 Bootloader 可能失去保修，重新分区会清空 Android 的数据。开始之前请先阅读[安全第一](#安全第一)。
+
+大部分硬件可用；摄像头、基带、耳机孔、轻触唤醒和自动旋转还不能用。见[可用功能](#可用功能)、原厂内核带来的硬性[限制](#限制)，以及 [docs/status.md](docs/status.md) 中的细节。
+
+没有发布版本，也没有预构建镜像：根文件系统镜像和启动镜像都要从源码构建。发布预构建镜像在[路线图](#路线图)上。报告问题或提交修复见 [CONTRIBUTING.md](CONTRIBUTING.md)，安全问题见 [SECURITY.md](SECURITY.md)。
 
 ## 前提条件
 
@@ -94,6 +110,14 @@ tools/repartition.sh 64 --apply         # 可选：根分区从 17 GiB 扩到 64
 ```
 
 你需要在 `keys/` 里放自己的 SSH 密钥（仓库不附带任何密钥），并在 `images/` 里放官方 ROM 中的原厂 `init_boot`。
+
+## 恢复 Android
+
+需要时仍可启动 Android。要让它重新成为默认系统，在 Fastboot 下把官方 ROM 中的原厂 `init_boot` 刷回安装时用的槽位（[docs/status.md](docs/status.md#restore-stock-android-permanently)）：
+
+```
+fastboot flash init_boot_<slot> images/init_boot-stock-OS4.0.5.0.img
+```
 
 ## 目录结构
 

@@ -2,6 +2,12 @@
 
 **English** | [简体中文](README.zh-CN.md)
 
+![Xiaomi Pad 9 Pro](https://img.shields.io/badge/device-Xiaomi%20Pad%209%20Pro-lightgrey)
+![Host: macOS](https://img.shields.io/badge/host-macOS-lightgrey)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
+<!-- banner -->
+
 [Omarchy](https://omarchy.org) (Arch Linux ARM + Hyprland) running **natively**
 on the Xiaomi Pad 9 Pro (codename `shuntian`, Qualcomm SM8845), booting
 straight into the desktop on power-up. No Android framework, no chroot inside
@@ -9,8 +15,29 @@ Android, no PRoot: the tablet runs systemd, Hyprland and the Omarchy shell on th
 stock Android GKI kernel. Android's own vendor daemons (audio, Bluetooth, sensors,
 touch) run beside it in a small "service island".
 
-> **Status: work in progress.** Daily-usable on two test tablets. The root image
-> builds from scratch; there are no prebuilt downloads yet (see [Roadmap](#roadmap)).
+<!-- screenshots -->
+
+## Status
+
+**Work in progress.** The port is daily-usable on the author's two test tablets
+(8 GB and 12 GB). It is for people who own this exact tablet and are at home with an
+unlocked bootloader, Fastboot and Arch Linux. It needs a Xiaomi Pad 9 Pro on stock
+ROM `OS4.0.5.0.XFPCNXM`, a Mac for the host scripts, an ARM64 Arch Linux ARM machine
+to build the image on, and Magisk root once; the full list is under
+[Requirements](#requirements).
+
+Installing flashes partitions on the tablet. A mistake can leave it unbootable,
+unlocking the bootloader can void the warranty, and repartitioning wipes Android's
+data. Read [Safety first](#safety-first) before you start.
+
+Most of the hardware works; cameras, the modem, the headset jack, tap-to-wake and
+auto-rotate do not. See [What works](#what-works), the hard limits of the stock
+kernel under [Limits](#limits), and the details in [docs/status.md](docs/status.md).
+
+There are no releases and no prebuilt images: you build the root image and the boot
+image from source. Publishing prebuilt images is on the [Roadmap](#roadmap).
+See [CONTRIBUTING.md](CONTRIBUTING.md) to report a bug or send a fix, and
+[SECURITY.md](SECURITY.md) for security problems.
 
 ## Requirements
 
@@ -112,6 +139,16 @@ tools/repartition.sh 64 --apply         # optional: 64 GiB root instead of 17
 
 You need your own SSH key in `keys/` (the repo ships none) and the stock
 `init_boot` from the official ROM in `images/`.
+
+## Going back to Android
+
+Android stays bootable on demand. To make it the default again, flash the stock
+`init_boot` from the official ROM back in Fastboot, to the slot you installed to
+([docs/status.md](docs/status.md#restore-stock-android-permanently)):
+
+```
+fastboot flash init_boot_<slot> images/init_boot-stock-OS4.0.5.0.img
+```
 
 ## Layout
 
