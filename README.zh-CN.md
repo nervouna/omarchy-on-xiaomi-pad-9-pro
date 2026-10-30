@@ -6,7 +6,7 @@
 ![Host: macOS](https://img.shields.io/badge/host-macOS-lightgrey)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-<!-- banner -->
+![Omarchy on Xiaomi Pad 9 Pro](docs/images/banner.jpg)
 
 让 [Omarchy](https://omarchy.org)（Arch Linux ARM + Hyprland）**原生**运行在小米平板 9 Pro
 （代号 `shuntian`，高通 SM8845）上，开机直接进入桌面。不依赖 Android 框架，不是 Android 里的

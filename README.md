@@ -6,7 +6,7 @@
 ![Host: macOS](https://img.shields.io/badge/host-macOS-lightgrey)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-<!-- banner -->
+![Omarchy on Xiaomi Pad 9 Pro](docs/images/banner.jpg)
 
 [Omarchy](https://omarchy.org) (Arch Linux ARM + Hyprland) running **natively**
 on the Xiaomi Pad 9 Pro (codename `shuntian`, Qualcomm SM8845), booting
