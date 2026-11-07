@@ -7,7 +7,8 @@ exactly that build.
 
 > Status: the from-scratch path (1A) was built and installed on a tablet on
 > 2026-09-29 (build on another tablet running the port, first boot imported the
-> vendor files by itself). Slot **a** is still untested.
+> vendor files by itself). A third tablet was installed the same way on slot **a**
+> on 2026-11-07, its image built in an Arch Linux ARM machine under OrbStack on the Mac.
 
 ## 0. What you need
 
@@ -24,7 +25,8 @@ exactly that build.
   snapshot of *your* tablet (git-ignored; it holds serial numbers). Capture it
   with `tools/capture-android-props.sh` while stock Android runs with Magisk root.
 - For 1A: an ARM64 Arch Linux ARM machine to build on (a tablet already
-  running the port, an ARM64 container or VM, a GitHub ARM runner) with access
+  running the port, an ARM64 container or VM such as `orb create -a arm64 arch` in
+  OrbStack on an Apple Silicon Mac, a GitHub ARM runner) with access
   to GitHub, crates.io and the Arch Linux ARM mirrors. For 1B: a working tablet.
 
 ## 1A. Build the root image from scratch (recommended)
@@ -33,7 +35,9 @@ exactly that build.
 builder/build-image.sh [OUTDIR]        # as root on the ARM64 build machine; ~30 min
 ```
 
-It installs packages (`builder/packages.txt`) from Omarchy's aarch64 stable channel
+It installs packages (`builder/packages.txt`) from Omarchy's aarch64 edge channel
+(`builder/pacman.conf`: since 2026-11-02 stable's Hyprland 0.56 can't be installed
+next to Arch Linux ARM's newer Hyprland libraries; the installed system still follows stable)
 into an empty root, Omarchy itself included (`omarchy`, `omarchy-settings`), plus
 Mesa with the KGSL backend and our patched Aquamarine (built from pinned sources,
 `builder/pins.conf`),
@@ -64,9 +68,8 @@ tools/make-image.sh --clean --reset-hypr --apply   # ~15 min; -> images/omarchy-
 1. Unlock the bootloader (Xiaomi's procedure).
 2. Flash the official fastboot ROM **OS4.0.5.0.XFPCNXM** (`flash_all`). Boot
    Android once to be sure it works; its data doesn't matter.
-3. Note the active slot: `fastboot getvar current-slot`. The first tablet ran
-   slot **b**. Stage 1 and the island derive the slot at runtime
-   **(untested on slot a)**.
+3. Note the active slot: `fastboot getvar current-slot` (`flash_all` sets **a**).
+   Stage 1 and the island derive the slot at runtime; both slots work.
 
 ## 3. Build the boot image (Mac)
 

@@ -43,6 +43,11 @@ upstream fix leaves the patched lines alone keeps applying, so drop these by han
 neither applies to v4.5.0-rc1, so the post-upgrade script reports them once 4.5
 lands. Delete them then.
 
+`0009` (bluetooth-power) is ours: Omarchy 4.5 turns Bluetooth off with
+`rfkill block bluetooth`, which also blocks the chip's `bt_power` switch and kills
+the stock HAL. The patch blocks only the controller (`hci0`). Keep it until
+upstream stops blocking every Bluetooth switch.
+
 Before a large update, tar the root to `/var/backups` (ext4: Omarchy's Snapper
 snapshots don't exist here), as in "Backups" below without piping it off the
 tablet. After it, reboot and check the desktop, touch, audio and Wi-Fi.
@@ -60,7 +65,8 @@ Hyprland runs on a patched Aquamarine (`patches/aquamarine-0001-shuntian-*.patch
 - a split primary plane (the SDE dual mixer underruns on one 3200-px pipe);
 - DMA-heap scanout buffers for KGSL;
 - a forced MODE_ID on modeset (first-frame DMS fix; without it there's no backlight/DPMS).
-Rebuild whenever Hyprland moves to a new Aquamarine ABI (the guard hook above
+The patch is for the tag in `builder/pins.conf` (v0.16.0, for Hyprland 0.57, since
+2026-11-07). Rebuild whenever Hyprland moves to a new Aquamarine ABI (the guard hook above
 stops the update when that happens): check out the matching upstream tag,
 `git apply` the patch, build and install with `LOA_AQUAMARINE=1`. Keep backups
 of the old `.so` **outside** `/usr/lib` (ldconfig picks up stray `libaquamarine.so.*`).

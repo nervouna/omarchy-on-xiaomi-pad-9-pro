@@ -129,7 +129,9 @@ python3 /usr/lib/loa/omarchy-menu-audit.py --apply || echo "the menu audit faile
 echo warm > /sys/kernel/reboot/mode 2>/dev/null || true
 systemctl restart systemd-journald
 chown root:root /etc/sudoers.d/10-loa-wheel; chmod 0440 /etc/sudoers.d/10-loa-wheel; visudo -c >/dev/null
-usermod -aG wheel omarchy
+# rfkill: /dev/rfkill gets no seat ACL here (sessions have no seat), and
+# omarchy-bluetooth-power switches Bluetooth with rfkill as the user.
+usermod -aG wheel,rfkill omarchy
 rm -f /etc/systemd/zram-generator.conf
 /usr/lib/loa/install-omarchy-icons.sh >/dev/null
 /usr/lib/loa/install-omarchy-font.sh

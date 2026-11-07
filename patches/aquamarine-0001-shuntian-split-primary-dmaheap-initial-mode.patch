@@ -74,7 +74,7 @@ index 0000000..f254002
 +    };
 +};
 diff --git a/include/aquamarine/backend/DRM.hpp b/include/aquamarine/backend/DRM.hpp
-index 281f13f..29f9942 100644
+index 25e27da..04c01cb 100644
 --- a/include/aquamarine/backend/DRM.hpp
 +++ b/include/aquamarine/backend/DRM.hpp
 @@ -119,6 +119,10 @@ namespace Aquamarine {
@@ -244,10 +244,10 @@ index 0000000..4318ae8
 +    return AQ_ALLOCATOR_TYPE_DMA_HEAP;
 +}
 diff --git a/src/backend/drm/DRM.cpp b/src/backend/drm/DRM.cpp
-index 431247b..644534f 100644
+index 688ed97..d58abb6 100644
 --- a/src/backend/drm/DRM.cpp
 +++ b/src/backend/drm/DRM.cpp
-@@ -4,6 +4,7 @@
+@@ -5,6 +5,7 @@
  #include <aquamarine/backend/drm/Legacy.hpp>
  #include <aquamarine/backend/drm/Atomic.hpp>
  #include <aquamarine/allocator/GBM.hpp>
@@ -255,8 +255,8 @@ index 431247b..644534f 100644
  #include <aquamarine/allocator/DRMDumb.hpp>
  #include <cstdint>
  #include <format>
-@@ -857,6 +858,21 @@ bool Aquamarine::CDRMBackend::shouldBlit() {
-     return !!primary;
+@@ -859,6 +860,21 @@ bool Aquamarine::CDRMBackend::shouldBlit() {
+     return primary && rendererRequired;
  }
  
 +
@@ -277,7 +277,7 @@ index 431247b..644534f 100644
  bool Aquamarine::CDRMBackend::initMgpu() {
      if (!rendererRequired)
          return true;
-@@ -1562,7 +1578,7 @@ void Aquamarine::CDRMBackend::onReady() {
+@@ -1563,7 +1579,7 @@ void Aquamarine::CDRMBackend::onReady() {
  
          // swapchain has to be created here because allocator is absent in connect if not ready
          auto primaryBackend  = primary ? primary : self;
@@ -286,7 +286,7 @@ index 431247b..644534f 100644
          c->output->swapchain->reconfigure(SSwapchainOptions{.length = 0, .scanout = true, .multigpu = !!primary, .scanoutOutput = c->output}); // mark the swapchain for scanout
          c->output->needsFrame = true;
  
-@@ -1719,12 +1735,26 @@ bool Aquamarine::SDRMPlane::init(drmModePlane* plane) {
+@@ -1720,12 +1736,26 @@ bool Aquamarine::SDRMPlane::init(drmModePlane* plane) {
              CRTC->cursor = self.lock();
              break;
          }
@@ -313,7 +313,7 @@ index 431247b..644534f 100644
      uint32_t crtcID = 0;
      if (props.values.crtc_id) {
          TRACE(backend->backend->log(AQ_LOG_TRACE, "drm: Using crtc_id for finding crtc"));
-@@ -2028,18 +2058,32 @@ void Aquamarine::SDRMConnector::connect(drmModeConnector* connector) {
+@@ -2029,18 +2059,32 @@ void Aquamarine::SDRMConnector::connect(drmModeConnector* connector) {
              continue;
          }
  
@@ -348,7 +348,7 @@ index 431247b..644534f 100644
              output->state->setMode(aqMode);
  
              //uint64_t modeID = 0;
-@@ -2116,7 +2160,7 @@ void Aquamarine::SDRMConnector::connect(drmModeConnector* connector) {
+@@ -2120,7 +2164,7 @@ void Aquamarine::SDRMConnector::connect(drmModeConnector* connector) {
      }
  
      auto primaryBackend = backend->primary ? backend->primary : backend;
@@ -358,10 +358,10 @@ index 431247b..644534f 100644
      output->needsFrame = true;
      backend->backend->events.newOutput.emit(SP<IOutput>(output));
 diff --git a/src/backend/drm/impl/Atomic.cpp b/src/backend/drm/impl/Atomic.cpp
-index e47781b..99b17eb 100644
+index 350dd95..b3584e3 100644
 --- a/src/backend/drm/impl/Atomic.cpp
 +++ b/src/backend/drm/impl/Atomic.cpp
-@@ -168,6 +168,21 @@ CDRMAtomicRequest::SAsyncResult Aquamarine::CDRMAtomicRequest::submitAsync(int d
+@@ -132,6 +132,21 @@ CDRMAtomicRequest::SAsyncResult Aquamarine::CDRMAtomicRequest::submitAsync(int d
  
  void Aquamarine::CDRMAtomicRequest::planeProps(Hyprutils::Memory::CSharedPointer<SDRMPlane> plane, Hyprutils::Memory::CSharedPointer<CDRMFB> fb, uint32_t crtc,
                                                 Hyprutils::Math::Vector2D pos, eOutputColorRange colorRange) {
@@ -383,7 +383,7 @@ index e47781b..99b17eb 100644
  
      if (failed)
          return;
-@@ -188,11 +203,12 @@ void Aquamarine::CDRMAtomicRequest::planeProps(Hyprutils::Memory::CSharedPointer
+@@ -152,11 +167,12 @@ void Aquamarine::CDRMAtomicRequest::planeProps(Hyprutils::Memory::CSharedPointer
                                     plane->props.values.fb_id, plane->props.values.crtc_id)));
  
      // src_ are 16.16 fixed point (lol)
@@ -399,7 +399,7 @@ index e47781b..99b17eb 100644
      add(plane->id, plane->props.values.crtc_h, (uint32_t)fb->buffer->size.y);
      add(plane->id, plane->props.values.fb_id, fb->id);
      add(plane->id, plane->props.values.crtc_id, crtc);
-@@ -262,7 +278,10 @@ void Aquamarine::CDRMAtomicRequest::addConnector(Hyprutils::Memory::CSharedPoint
+@@ -226,7 +242,10 @@ void Aquamarine::CDRMAtomicRequest::addConnector(Hyprutils::Memory::CSharedPoint
              free(currentMode);
          }
  
@@ -411,7 +411,7 @@ index e47781b..99b17eb 100644
              addConnectorModeset(connector, data);
  
          // Setup HDR
-@@ -322,8 +341,11 @@ void Aquamarine::CDRMAtomicRequest::addConnector(Hyprutils::Memory::CSharedPoint
+@@ -289,8 +308,11 @@ void Aquamarine::CDRMAtomicRequest::addConnector(Hyprutils::Memory::CSharedPoint
  
          planeProps(connector->crtc->primary, data.mainFB, connector->crtc->id, {}, STATE.colorRange);
  
@@ -424,7 +424,7 @@ index e47781b..99b17eb 100644
  
          if (connector->crtc->primary->props.values.fb_damage_clips)
              add(connector->crtc->primary->id, connector->crtc->primary->props.values.fb_damage_clips, data.atomic.fbDamage);
-@@ -332,6 +354,40 @@ void Aquamarine::CDRMAtomicRequest::addConnector(Hyprutils::Memory::CSharedPoint
+@@ -299,6 +321,40 @@ void Aquamarine::CDRMAtomicRequest::addConnector(Hyprutils::Memory::CSharedPoint
      }
  }
  
@@ -465,7 +465,7 @@ index e47781b..99b17eb 100644
  void Aquamarine::CDRMAtomicRequest::addConnectorModeset(Hyprutils::Memory::CSharedPointer<SDRMConnector> connector, SDRMConnectorCommitData& data) {
      if (!data.modeset)
          return;
-@@ -344,6 +400,7 @@ void Aquamarine::CDRMAtomicRequest::addConnectorModeset(Hyprutils::Memory::CShar
+@@ -311,6 +367,7 @@ void Aquamarine::CDRMAtomicRequest::addConnectorModeset(Hyprutils::Memory::CShar
          add(connector->crtc->id, connector->crtc->props.values.mode_id, data.atomic.modeBlob);
          if (connector->props.values.link_status)
              add(connector->id, connector->props.values.link_status, DRM_MODE_LINK_STATUS_GOOD);
