@@ -1498,3 +1498,48 @@ aarch64 stable repository lacks some of it.
   `30-loa-chrome-sandbox.hook` makes every packaged `chrome-sandbox` setuid
   root and hands a tree owned by another uid to root; apply-overlay does the
   same for what is already installed.
+
+### 2026-11-07: third tablet from scratch, on slot a; builder moves to Omarchy edge + Aquamarine 0.16
+
+A new tablet (shipped with OS4.0.3), installed by runbook 1A with every step
+driven from the Mac.
+- ROM: official fastboot package OS4.0.5.0.XFPCNXM (its MD5 matches the file
+  name; its `init_boot.img` is the `61427d71…` one), `flash_all.sh` run from the
+  Mac. macOS's `/usr/bin/grep` has no `-P`, so the script's anti-rollback check
+  silently reads the device's version as 0; checked by hand instead (device
+  `anti` 1, package `anti_version.txt` 1). `flash_all` ends with `set_active a`.
+- Build machine: an Arch Linux ARM machine in OrbStack (`orb create -a arm64 arch`;
+  `pacman -S git e2fsprogs zstd libarchive gnupg`), reading the checkout straight
+  from the Mac's home, output under `/var/tmp`; 15 min. Quitting the OrbStack
+  app stops its VM and with it a running build (the first attempt died that way).
+- The build stopped in "target root": no package set satisfies Omarchy's
+  dependencies any more. Omarchy's aarch64 stable repo still has `hyprland`
+  0.56.2 (needs `libaquamarine.so=14`, `libhyprgraphics.so=4`) and
+  `aquamarine` 0.15.1, but Arch Linux ARM `[extra]` moved on 2026-11-02 to
+  `aquamarine` 0.16.0 (so=15), `hyprgraphics` 0.6.0 (so=5) and `hyprtoolkit`
+  0.6.0 (needs both), which `hyprland` pulls in through `hyprland-guiutils`.
+  Omarchy's aarch64 edge repo has `hyprland` 0.57.1 and `aquamarine` 0.16.0 and
+  resolves the whole list; `omarchy` itself is 4.5.0-3 in both.
+- So the builder now installs from edge (`builder/pacman.conf`) and builds
+  Aquamarine v0.16.0 (`builder/pins.conf`). Our patch needed one hunk re-placed
+  (the `scanoutAllocator()` helper, a pure addition, now right before
+  `initMgpu()`); its added and removed lines are unchanged. The installed system
+  still follows stable (`setup-omarchy-repo.sh`); pacman keeps edge's newer
+  Hyprland. The two older tablets will need this patch once stable moves to
+  Hyprland 0.57: the Aquamarine guard stops `omarchy update` until then.
+- Harmless build-log noise: `omarchy-settings`' install script runs before
+  `cups` exists (`install: invalid group 'cups'`, so the hardened
+  `cups-files.conf` isn't placed) and finds no `/run/lock` in the build root
+  ("Temporary Omarchy sudo grants remain..."); its next upgrade redoes both.
+  Patches 0007/0008 report "no longer applies" on 4.5, as maintenance.md expected.
+- Install: `tools/install.sh`; `ramdump` 162 s, but writing the 4 MiB
+  `init_boot_a` took 273 s. First boot: SSH after ~30 s, no failed units,
+  `import-vendor: slot _a`, 974 modules and 184 MiB firmware from OS4.0.5.0,
+  DSI-1 3200x2136@120 on Hyprland 0.57.1 + patched Aquamarine 0.16.0 (backlight
+  on; the only error is a missing `gamma_size` property). `personalize.sh`,
+  `apply-overlay.sh` (0 changes), reboot: all well. **Slot a works.**
+- It runs the first tablet's Android property snapshot (same build, other
+  serials); its own is still to be captured.
+- "The keyboard doesn't connect": `Connected=[0] Power=[0]`, the cover's pogo
+  contacts weren't seated. Re-attached -> `Connected=[1] Power=[1] POGOPIN=[OK]`,
+  keyboard fw 24, touchpad fw 201, as on the other tablets.

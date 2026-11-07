@@ -60,7 +60,8 @@ Hyprland runs on a patched Aquamarine (`patches/aquamarine-0001-shuntian-*.patch
 - a split primary plane (the SDE dual mixer underruns on one 3200-px pipe);
 - DMA-heap scanout buffers for KGSL;
 - a forced MODE_ID on modeset (first-frame DMS fix; without it there's no backlight/DPMS).
-Rebuild whenever Hyprland moves to a new Aquamarine ABI (the guard hook above
+The patch is for the tag in `builder/pins.conf` (v0.16.0, for Hyprland 0.57, since
+2026-11-07). Rebuild whenever Hyprland moves to a new Aquamarine ABI (the guard hook above
 stops the update when that happens): check out the matching upstream tag,
 `git apply` the patch, build and install with `LOA_AQUAMARINE=1`. Keep backups
 of the old `.so` **outside** `/usr/lib` (ldconfig picks up stray `libaquamarine.so.*`).
