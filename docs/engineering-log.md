@@ -1543,3 +1543,36 @@ driven from the Mac.
 - "The keyboard doesn't connect": `Connected=[0] Power=[0]`, the cover's pogo
   contacts weren't seated. Re-attached -> `Connected=[1] Power=[1] POGOPIN=[OK]`,
   keyboard fw 24, touchpad fw 201, as on the other tablets.
+
+### 2026-11-07: Bluetooth switch in Omarchy 4.5's panel did nothing (three causes), Omarchy patch 0009
+
+The Bluetooth panel showed "off" while BlueZ said on, and its switch did
+nothing. Each fix uncovered the next cause:
+- **Off killed the controller.** Omarchy 4.5's `omarchy-bluetooth-power` turns
+  Bluetooth off with `rfkill block bluetooth` (4.0.6 used bluetoothctl). That
+  also blocks the platform switch `bt_power`: the WCN7750 loses power, the stock
+  HAL is SIGKILLed and `hci0` disappears; systemd restarts HAL and bridge, and
+  `bt-bridge.sh`'s `rfkill unblock bluetooth` turned it back on ~8 s later.
+  Blocking only `hci0`'s switch keeps the HAL alive (BlueZ `off-blocked`, back
+  on within 2 s of unblocking). Patch 0009 blocks only the `hci*` switches
+  (all of them if there is no controller); `bt-bridge.sh` unblocks only the
+  others. Off now persists: systemd-rfkill saves `hci0` as
+  `/var/lib/systemd/rfkill/bluetooth` once it is idle (~5 s; removing the device
+  before that cancels the save) and restores it when btattach recreates `hci0`.
+- **The user may not use rfkill.** The panel runs the script as the user;
+  `/dev/rfkill` is `root:rfkill 0664` and gets no uaccess ACL here (the sessions
+  have no seat): "Permission denied". The user joins `rfkill` (`in-target.sh`
+  for new images, `overlay-install.sh` for installed ones; needs a new login).
+- **The panel misses the power-up.** `hci0` appears ~1 s after quickshell
+  (0.3.2) starts. It builds the adapter from the InterfacesAdded snapshot, still
+  `Powered: no` / `off-enabling` while BlueZ powers it up, and subscribes to
+  PropertiesChanged only afterwards: the power-up is lost, the log shows only
+  Class/UUIDs updates after that. The panel says off; its "on" finds the
+  adapter powered and changes nothing, so nothing ever updates. This recurs at
+  every resume (loa-sleepd restarts bluetooth, loa-bluetooth and loa-bthal).
+  `bt-bridge.sh` now cycles the adapter's power once, 2 s after it settles
+  (skipped when it is blocked or has a connection): quickshell then tracks
+  `Powered: yes`.
+- Verified: off/on/toggle as root and as the user (HAL never restarted), off
+  kept across a stack restart, the shell in sync after a stack restart with the
+  desktop up; the panel switch by the user after a reboot.

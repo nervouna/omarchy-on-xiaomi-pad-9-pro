@@ -1,0 +1,60 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Xiaoyu Guan <xiaoyuguan@hotmail.com>
+Date: Sat, 07 Nov 2026 15:08:52 +0800
+Subject: [PATCH] bluetooth-power: block the controllers, not the power switch
+
+Turning Bluetooth off blocked every Bluetooth rfkill switch. On Qualcomm
+platforms that expose the chip's power rail as its own switch (bt_power),
+that cuts the power under the vendor stack: the controller disappears
+instead of turning off, and the panel's switch has no adapter left to turn
+back on. Block only the controllers' (hci*) switches; systemd-rfkill
+persists those just the same.
+---
+ bin/omarchy-bluetooth-power | 22 ++++++++++++++++++++--
+ 1 file changed, 20 insertions(+), 2 deletions(-)
+
+diff --git a/bin/omarchy-bluetooth-power b/bin/omarchy-bluetooth-power
+--- a/bin/omarchy-bluetooth-power
++++ b/bin/omarchy-bluetooth-power
+@@ -48,6 +48,24 @@
+   done
+ }
+ 
++# Block the controllers' own switches (hci*), not every Bluetooth switch. Some
++# platforms expose the chip's power rail as a separate rfkill switch (Qualcomm's
++# bt_power); blocking that one cuts the power under the vendor Bluetooth stack,
++# and the controller disappears instead of turning off. The controller's switch
++# alone drops it to Powered: no, and systemd-rfkill keeps it across reboots too.
++# Without a controller to address, block them all as before.
++block_controllers() {
++  local ids
++
++  ids=$(rfkill -n -o ID,DEVICE list bluetooth 2>/dev/null | awk '$2 ~ /^hci/ { print $1 }')
++
++  if [[ -n $ids ]]; then
++    rfkill block $ids
++  else
++    rfkill block bluetooth
++  fi
++}
++
+ power_on() {
+   rfkill unblock bluetooth
+ 
+@@ -70,11 +88,11 @@
+   off)
+     # No bluetoothctl power off to go with this: the block already drops the
+     # adapter to Powered: no, and it is the half that survives the reboot.
+-    rfkill block bluetooth
++    block_controllers
+     ;;
+   toggle)
+     if powered; then
+-      rfkill block bluetooth
++      block_controllers
+     else
+       power_on
+     fi
+-- 
+2.56.0
+

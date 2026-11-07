@@ -27,7 +27,7 @@ ln -sfn /usr/share/zoneinfo/UTC /etc/localtime
 echo shuntian > /etc/hostname
 systemctl set-default graphical.target
 useradd --create-home --uid 1000 --user-group --shell /bin/bash --comment Omarchy omarchy
-usermod -aG wheel,audio,input,render,video,seat omarchy
+usermod -aG wheel,audio,input,render,video,seat,rfkill omarchy
 passwd -l omarchy >/dev/null     # the owner sets one: tools/tssh -t passwd omarchy
 
 # Omarchy: its packages put the commands in /usr/bin and the user's starting
