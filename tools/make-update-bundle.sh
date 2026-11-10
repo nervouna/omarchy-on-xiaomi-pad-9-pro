@@ -58,8 +58,11 @@ mv "$T/MANIFEST" MANIFEST
 MEMBERS="MANIFEST overlay-install.sh rootfs-overlay user-defaults"
 [ -z "$AQ" ] || MEMBERS="$MEMBERS $(basename "$AQ")"
 rm -f "$OUT/loa-update.tar" "$OUT/loa-update.tar.sig"
+# Owned by root in the tar: no builder's user name in a published bundle.
+if tar --version 2>/dev/null | grep -q 'GNU tar'; then OWN="--owner=root:0 --group=root:0"
+else OWN="--uid 0 --gid 0 --uname root --gname root"; fi
 # shellcheck disable=SC2086
-COPYFILE_DISABLE=1 tar --no-xattrs -cf "$T/loa-update.tar" $MEMBERS
+COPYFILE_DISABLE=1 tar $OWN --no-xattrs -cf "$T/loa-update.tar" $MEMBERS
 cd /
 mv "$T/loa-update.tar" "$OUT/loa-update.tar"
 if [ -n "$KEY" ]; then
