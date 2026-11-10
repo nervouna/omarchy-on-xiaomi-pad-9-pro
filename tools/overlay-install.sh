@@ -2,13 +2,16 @@
 # Target side of tools/apply-overlay.sh: installs /run/loa-overlay.tar (a tar of
 # rootfs-overlay/ + user-defaults/) into the running root. Also run inside a
 # fresh root by builder/build-image.sh (via chroot). Args: MODE (apply|diff),
-# optional SSH public key for root.
+# optional SSH public key for root. Env: LOA_OVERLAY_BACKUP (optional) is the
+# backup directory instead of /var/backups/loa-overlay/<time>.
 set -e
 MODE=$1; PUB=$2
 S=/run/loa-overlay; rm -rf $S; mkdir -p $S
 tar --warning=no-timestamp --warning=no-unknown-keyword -xf /run/loa-overlay.tar -C $S --no-same-owner
 rm -f /run/loa-overlay.tar
-BK=/var/backups/loa-overlay/$(date +%Y%m%d-%H%M%S)
+# loa-update names the backup directory itself (LOA_OVERLAY_BACKUP), recorded
+# before anything is replaced; otherwise it is the time.
+BK=${LOA_OVERLAY_BACKUP:-/var/backups/loa-overlay/$(date +%Y%m%d-%H%M%S)}
 backup() { [ -e "$1" ] || [ -L "$1" ] || return 0; mkdir -p "$BK$(dirname "$1")"; cp -a "$1" "$BK$1"; }
 U="setpriv --reuid=1000 --regid=1000 --init-groups"
 n=0

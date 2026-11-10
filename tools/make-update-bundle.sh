@@ -29,6 +29,10 @@ echo "$VER" | grep -Eq '^[0-9]{8}-[0-9]+$' || die "--version must be YYYYMMDD-N 
 [ -z "$AQ" ] || [ -f "$AQ" ] || die "no such package: $AQ"
 case "$(basename "${AQ:-aquamarine-x.pkg.tar.zst}")" in aquamarine-*.pkg.tar.zst) ;; *) die "--aquamarine takes an aquamarine-*.pkg.tar.zst" ;; esac
 [ -z "$KEY" ] || [ -f "$KEY" ] || die "no such key: $KEY"
+# Absolute paths: the script changes directory before it copies and signs.
+abs() { echo "$(cd "$(dirname "$1")" && pwd)/$(basename "$1")"; }
+[ -z "$AQ" ] || AQ=$(abs "$AQ")
+[ -z "$KEY" ] || KEY=$(abs "$KEY")
 if command -v sha256sum >/dev/null 2>&1; then SHA="sha256sum"; else SHA="shasum -a 256"; fi
 git -C "$D" rev-parse --verify -q HEAD >/dev/null || die "$D is not a git checkout"
 COMMIT=$(git -C "$D" rev-parse HEAD)

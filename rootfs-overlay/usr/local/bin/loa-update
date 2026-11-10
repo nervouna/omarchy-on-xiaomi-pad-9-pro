@@ -152,14 +152,23 @@ apply() {
             if [ $AQ_ACTION = same ]; then say "$AQ_WHY"
             else say "not installing Aquamarine: $AQ_WHY. Kept as $kept; install it together with a Hyprland that needs it (docs/maintenance.md, \"Over-the-air updates\")"; fi ;;
     esac
+    # The backup directory the install script will use, the added files and the
+    # marker are on disk before it replaces anything: a rollback after a power
+    # loss or a kill mid-install works from them.
+    BKD=$BACKUPS/$(date +%Y%m%d-%H%M%S)-loa-update-$NEW
+    echo "$BKD" > "$R/backup"
     echo "$R" > $S/last; echo applied > $S/pending; sync
 
     # 2. The overlay, through the bundle's own copy of the wired install script.
     ls $BACKUPS 2>/dev/null > $C/backups-before
     tar -cf /run/loa-overlay.tar -C $B rootfs-overlay user-defaults || die "cannot stage the overlay in /run"
-    { sh $B/overlay-install.sh apply ''; echo $? > "$R/install-rc"; } 2>&1 | tee "$R/install.log"
-    ls $BACKUPS 2>/dev/null | while IFS= read -r d; do grep -qx "$d" $C/backups-before || echo "$BACKUPS/$d"; done |
-        tail -1 > "$R/backup"
+    { LOA_OVERLAY_BACKUP=$BKD sh $B/overlay-install.sh apply ''; echo $? > "$R/install-rc"; } 2>&1 | tee "$R/install.log"
+    # An install script from before LOA_OVERLAY_BACKUP (a --force downgrade)
+    # picks its own name: take the directory that appeared.
+    if [ ! -d "$BKD" ]; then
+        new=$(ls $BACKUPS 2>/dev/null | while IFS= read -r d; do grep -qx "$d" $C/backups-before || echo "$BACKUPS/$d"; done | tail -1)
+        [ -z "$new" ] || echo "$new" > "$R/backup"
+    fi
     rc=$(cat "$R/install-rc" 2>/dev/null); rm -rf $B
     [ "$rc" = 0 ] || die "the install script failed (exit ${rc:-?}); undo what it did with: loa-update rollback"
     echo "$NEW" > $S/version; sync

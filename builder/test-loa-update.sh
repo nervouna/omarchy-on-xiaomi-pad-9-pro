@@ -144,5 +144,22 @@ swap_key; lu --file $W/b6/loa-update.tar || fail "applying a bundle with a misma
     grep -q "not installing Aquamarine" $W/out || fail "a mismatched Aquamarine is kept, not installed"
 pass "a bundled Aquamarine whose libaquamarine.so Hyprland does not use is kept, not installed"
 
+# 6. An install killed after its second change (F replaced, then N added), with
+# loa-update itself, so none of its post-processing runs; then the automatic
+# rollback works from what was recorded before the install started.
+echo "-- changed again by the test" >> $F; cp -a $F $W/F.before2; rm -f $N
+vbefore=$(cat $S/version)
+(cd $W/repo && sed -i 's/echo "updated \$f"$/echo "updated $f"; [ $n = 2 ] \&\& kill -KILL 0/' tools/overlay-install.sh &&
+    grep -q 'kill -KILL 0' tools/overlay-install.sh && git commit -qam interrupt) > $W/out 2>&1 || fail "building the interrupting install script"
+bundle 29990101-7 $W/b7 $W/k1
+swap_key
+setsid -w "$LU" --file $W/b7/loa-update.tar > $W/out 2>&1 && fail "the interrupted install exits 0"
+same $F $W/repo/rootfs-overlay$F && [ -e $N ] && [ "$(cat $S/pending)" = applied ] && [ "$(cat $S/version)" = "$vbefore" ] ||
+    fail "the install was interrupted after replacing F and adding N"
+lu boot-check && lu boot-check || fail "the automatic rollback after an interrupted install runs"
+same $F $W/F.before2 && [ ! -e $N ] && [ ! -e $S/pending ] && [ "$(cat $S/version)" = "$vbefore" ] ||
+    fail "the automatic rollback after an interrupted install restores the replaced file and removes the added one"
+pass "the automatic rollback after an interrupted install restores the replaced file and removes the added one"
+
 rm -rf $W
 echo "loa-update tests: all $n passed"
