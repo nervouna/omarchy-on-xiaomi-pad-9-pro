@@ -15,12 +15,9 @@ concurrency:
 
 env:
   # Omarchy patches the build log may report as "no longer applies" without
-  # failing the job (space separated patch file names). Both are backports of
-  # fixes that Omarchy 4.5 contains (docs/maintenance.md); any other patch in
-  # that state fails the build.
-  EXPECTED_STALE_PATCHES: >-
-    0007-font-set-restore-the-notification-glyph-and-keep-pgrep-quiet.patch
-    0008-restart-shell-wait-for-the-notification-service.patch
+  # failing the job (space separated patch file names). Empty: every patch in
+  # rootfs-overlay/usr/share/loa/omarchy/patches has to apply.
+  EXPECTED_STALE_PATCHES: ""
   # Arch Linux ARM Build System key, pinned; it signs the bootstrap tarball.
   ALARM_KEY_FPR: 68B3537F39A313B3E574D06777193F152BDBE6A6
 
