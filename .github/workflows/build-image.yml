@@ -100,6 +100,7 @@ jobs:
           R=/var/tmp/alarm
           sudo mkdir -p "$R/repo" "$R/out" "$R/proc" "$R/sys" "$R/dev" "$R/run" "$R/tmp"
           mkdir -p "$RUNNER_TEMP/out"
+          sudo mount --bind "$R" "$R"   # pacman's CheckSpace needs / to be a mount point
           sudo mount -t proc proc "$R/proc"
           sudo mount --rbind /sys "$R/sys";  sudo mount --make-rslave "$R/sys"
           sudo mount --rbind /dev "$R/dev";  sudo mount --make-rslave "$R/dev"
