@@ -110,8 +110,8 @@ jobs:
           sudo mount --bind "$RUNNER_TEMP/out" "$R/out"
           sudo rm -f "$R/etc/resolv.conf"   # a symlink into /run, hidden by the tmpfs
           sudo cp -L /etc/resolv.conf "$R/etc/resolv.conf"
-          # Omarchy's Arch Linux ARM snapshot, as the image itself uses.
-          sudo cp rootfs-overlay/usr/share/loa/pacman/mirrorlist "$R/etc/pacman.d/mirrorlist"
+          # The tarball's mirrorlist (Arch Linux ARM's own) stays: Omarchy's
+          # snapshot of it lags behind what edge's Hyprland needs.
           sudo chroot "$R" /usr/bin/env -i HOME=/root PATH=/usr/bin bash -euxo pipefail -c '
             pacman-key --init
             pacman-key --populate archlinuxarm
