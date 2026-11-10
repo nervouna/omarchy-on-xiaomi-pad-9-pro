@@ -99,8 +99,14 @@ runner: it unpacks the signature-checked Arch Linux ARM tarball, enters it with
 `chroot` and runs the builder there as root. It runs on every push to `main`, on
 pull requests that touch `builder/`, `rootfs-overlay/`, `patches/`,
 `user-defaults/`, `tools/overlay-install.sh` or the workflow, and on demand
-(Actions > Build image > Run workflow). A separate `check-public` job runs
-`tools/check-public.sh` on every push and pull request.
+(Actions > Build image > Run workflow). Two more jobs run on every push and pull
+request: `check-public` (`tools/check-public.sh`) and `lint` (`tools/lint.sh`:
+shell and Python syntax, shellcheck at error level).
+
+The `ci` job passes when every other job passed or was skipped. It is the one
+check that `main`'s branch protection requires, so pull requests land with
+`gh pr merge --auto --squash` once it is green; direct pushes to `main` are
+rejected.
 
 The job checks the image (`sha256sum -c`, `zstd -t`, a 16 GiB size, `e2fsck -fn`
 on the decompressed file) and uploads the artifact `omarchy-scratch-image` for
