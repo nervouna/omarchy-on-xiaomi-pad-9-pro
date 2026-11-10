@@ -1,0 +1,180 @@
+name: Build image
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  # Omarchy patches the build log may report as "no longer applies" without
+  # failing the job (space separated patch file names). Both are backports of
+  # fixes that Omarchy 4.5 contains (docs/maintenance.md); any other patch in
+  # that state fails the build.
+  EXPECTED_STALE_PATCHES: >-
+    0007-font-set-restore-the-notification-glyph-and-keep-pgrep-quiet.patch
+    0008-restart-shell-wait-for-the-notification-service.patch
+  # Arch Linux ARM Build System key, pinned; it signs the bootstrap tarball.
+  ALARM_KEY_FPR: 68B3537F39A313B3E574D06777193F152BDBE6A6
+
+jobs:
+  check-public:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - run: tools/check-public.sh
+
+  changes:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 5
+    outputs:
+      build: ${{ steps.diff.outputs.build }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: diff
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          build=true
+          if [ "$EVENT" = pull_request ]; then
+            if git diff --name-only "$BASE...$HEAD" | grep -qE '^(builder/|rootfs-overlay/|patches/|user-defaults/|tools/overlay-install\.sh$|\.github/workflows/build-image\.yml$)'; then
+              build=true
+            else
+              build=false
+            fi
+          fi
+          echo "build=$build" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: changes
+    if: needs.changes.outputs.build == 'true'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Free disk space
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/share/boost \
+            /opt/hostedtoolcache/CodeQL /usr/local/.ghcup /usr/lib/jvm /usr/local/julia* || true
+          sudo apt-get clean
+          df -h /
+
+      - name: Bootstrap Arch Linux ARM
+        run: |
+          set -euo pipefail
+          sudo apt-get install -y --no-install-recommends libarchive-tools
+          t=$RUNNER_TEMP/alarm; mkdir -p "$t"; cd "$t"
+          base=http://os.archlinuxarm.org/os
+          curl -fsSL --retry 5 -O "$base/ArchLinuxARM-aarch64-latest.tar.gz" \
+                  -O "$base/ArchLinuxARM-aarch64-latest.tar.gz.sig"
+          export GNUPGHOME=$t/gnupg; install -d -m 700 "$GNUPGHOME"
+          for ks in keyserver.ubuntu.com keys.openpgp.org; do
+            gpg --batch --keyserver "hkps://$ks" --recv-keys "$ALARM_KEY_FPR" && break
+          done
+          gpg --batch --with-colons --fingerprint "$ALARM_KEY_FPR" | grep -q "^fpr:::::::::$ALARM_KEY_FPR:"
+          gpg --batch --status-fd 1 --verify ArchLinuxARM-aarch64-latest.tar.gz.sig \
+              ArchLinuxARM-aarch64-latest.tar.gz | tee verify.txt
+          grep -q "^\[GNUPG:\] VALIDSIG $ALARM_KEY_FPR " verify.txt
+          sudo mkdir -p /var/tmp/alarm
+          sudo bsdtar -xpf ArchLinuxARM-aarch64-latest.tar.gz -C /var/tmp/alarm
+          rm ArchLinuxARM-aarch64-latest.tar.gz
+          df -h /
+
+      - name: Prepare the Arch Linux ARM chroot
+        run: |
+          set -euo pipefail
+          R=/var/tmp/alarm
+          sudo mkdir -p "$R/repo" "$R/out" "$R/proc" "$R/sys" "$R/dev" "$R/run" "$R/tmp"
+          mkdir -p "$RUNNER_TEMP/out"
+          sudo mount -t proc proc "$R/proc"
+          sudo mount --rbind /sys "$R/sys";  sudo mount --make-rslave "$R/sys"
+          sudo mount --rbind /dev "$R/dev";  sudo mount --make-rslave "$R/dev"
+          sudo mount -t tmpfs -o mode=755 tmpfs "$R/run"
+          sudo mount -t tmpfs -o mode=1777 tmpfs "$R/tmp"
+          sudo mount --bind "$GITHUB_WORKSPACE" "$R/repo"
+          sudo mount --bind "$RUNNER_TEMP/out" "$R/out"
+          sudo cp -L /etc/resolv.conf "$R/etc/resolv.conf"
+          # Omarchy's Arch Linux ARM snapshot, as the image itself uses.
+          sudo cp rootfs-overlay/usr/share/loa/pacman/mirrorlist "$R/etc/pacman.d/mirrorlist"
+          sudo chroot "$R" /usr/bin/env -i HOME=/root PATH=/usr/bin bash -euxo pipefail -c '
+            pacman-key --init
+            pacman-key --populate archlinuxarm
+            pacman -Syu --noconfirm --needed git e2fsprogs zstd libarchive gnupg
+          '
+
+      - name: Build the root image
+        run: |
+          set -o pipefail
+          sudo chroot /var/tmp/alarm /usr/bin/env -i HOME=/root TERM=xterm LANG=C.UTF-8 \
+            PATH=/usr/local/sbin:/usr/local/bin:/usr/bin \
+            /repo/builder/build-image.sh /out 2>&1 | tee "$RUNNER_TEMP/build.log"
+
+      - name: Fail on unexpected stale Omarchy patches
+        run: |
+          grep -E 'WARNING: .* no longer applies' "$RUNNER_TEMP/build.log" || echo "no patch reported as no longer applying"
+          fail=0
+          for p in $(sed -nE 's/.*WARNING: (\S+) no longer applies.*/\1/p' "$RUNNER_TEMP/build.log"); do
+            case " $(echo $EXPECTED_STALE_PATCHES) " in
+              *" $p "*) echo "expected: $p" ;;
+              *) echo "::error::$p no longer applies to this Omarchy (update patches/ or EXPECTED_STALE_PATCHES)"; fail=1 ;;
+            esac
+          done
+          exit $fail
+
+      - name: Check the image
+        working-directory: ${{ runner.temp }}/out
+        run: |
+          set -euo pipefail
+          sudo chown -R "$USER" .
+          ls -l
+          img=$(ls omarchy-scratch-*.img.zst); [ "$(echo "$img" | wc -l)" = 1 ]
+          sha256sum -c "$img.sha256"
+          zstd -t "$img"
+          zstd -d -q --sparse -o "${img%.zst}" "$img"
+          size=$(stat -c %s "${img%.zst}")
+          echo "image size: $size"
+          [ "$size" = 17179869184 ]
+          sudo e2fsck -fn "${img%.zst}"
+          rm "${img%.zst}"
+
+      - name: Disk space at the end
+        if: always()
+        run: df -h /
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: omarchy-scratch-image
+          path: |
+            ${{ runner.temp }}/out/omarchy-scratch-*.img.zst
+            ${{ runner.temp }}/out/omarchy-scratch-*.img.zst.sha256
+          retention-days: 14
+          compression-level: 0
+          if-no-files-found: error
+
+      - name: Upload the build log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: ${{ runner.temp }}/build.log
+          retention-days: 14
+          if-no-files-found: ignore
+
+      - name: Unmount the chroot
+        if: always()
+        run: |
+          findmnt -rn -o TARGET | grep '^/var/tmp/alarm' | sort -r | while read -r m; do sudo umount -l "$m" || true; done
