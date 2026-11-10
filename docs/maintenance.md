@@ -59,6 +59,73 @@ The builder now builds it without LLVM. The tablets' older build links
 `libLLVM.so.22.1`; `/etc/pacman.d/hooks/20-loa-mesa-keep-llvm.hook` copies the
 libLLVM it needs next to it before an llvm-libs upgrade removes it.
 
+## Over-the-air updates (`loa-update`)
+
+A tablet away from the Mac takes a new version of this repo's files over Wi-Fi.
+Nothing runs on a timer: an update is installed only when the owner runs it.
+
+```
+sudo loa-update check             # installed version and the latest release's
+sudo loa-update --diff            # download, verify, list what would change
+sudo loa-update                   # download, verify, apply, record
+sudo loa-update --tag <T>         # the bundle of release <T> (how a pre-release is tried)
+sudo loa-update --file <PATH>     # a local bundle, <PATH>.sig beside it
+sudo loa-update rollback          # undo the last applied update
+```
+
+`releases/latest` never resolves to a pre-release, so a plain `loa-update` only
+sees promoted releases. `--force` installs the same or an older version; an
+unsigned or wrongly signed bundle is never installed.
+
+**The bundle.** `tools/make-update-bundle.sh --version YYYYMMDD-N --out DIR
+[--aquamarine PKG] [--key PRIVATE_KEY]` writes `DIR/loa-update.tar` (and with
+`--key`, `DIR/loa-update.tar.sig`). It holds the committed `rootfs-overlay/`,
+`user-defaults/` and `tools/overlay-install.sh` of `HEAD` (never the working
+tree, so no git-ignored local input gets in), the patched Aquamarine package when
+given, and `MANIFEST` (version, commit, sha256 of every member). Versions compare
+as (date, N). The signature is `ssh-keygen -Y sign`, namespace `loa-update`; the
+private key exists only as the Actions secret `LOA_UPDATE_SIGNING_KEY`, the
+public one is `/usr/share/loa/update/allowed_signers`.
+
+It does **not** hold Mesa-KGSL or `init_boot`: those stay wired and Fastboot-only.
+
+**What `loa-update` does.** Before it writes anything: the signature over the
+tar, no member that is absolute, contains `..` or is not a file, directory or
+symlink, every member's sha256 against `MANIFEST`, and a version newer than the
+installed one (a tablet with no recorded version, installed before this, counts
+as older than any). Then it installs the bundled Aquamarine with
+`LOA_AQUAMARINE=1 pacman -U`, but only when its version differs from the
+installed one and the `libaquamarine.so` it provides is the one the installed
+Hyprland depends on; otherwise the package is kept in
+`/var/lib/loa-update/aquamarine/` and the output says why (install it by hand
+together with the Hyprland that needs it, as under "Aquamarine" below). Then it
+runs the bundle's own `overlay-install.sh apply` (the wired path, backups in
+`/var/backups/loa-overlay/<time>/` included) and records the version.
+
+**Rollback.** `loa-update rollback` restores the files the update replaced from
+its backup, removes the files and directories it added, reinstalls the previous
+Aquamarine if it changed it, and restores the recorded version. It is one level
+deep: the last applied update. Not undone: units newly enabled by the install
+script, and its other steps (pacman channel, groups, icons).
+
+Automatic: the update leaves `/var/lib/loa-update/pending` = `applied`.
+`loa-update-rollback.service` (before `sysinit.target` and `loa-desktop`) turns
+it into `tried` on the first boot after the update, and `loa-boot-ok` deletes
+`tried`. If the next boot still finds `tried`, that boot never reached the
+desktop: it rolls back and reloads systemd before the desktop starts. So one
+failed boot is enough, well before stage 1 gives up after three.
+
+**State**, all in `/var/lib/loa-update/`: `version`, `pending`, `last` (path
+of the last update's record), `updates/<version>-<time>/` (its backup
+directory, added files and directories, previous version, previous Aquamarine
+package, install log; `.rolled-back` once undone), `aquamarine/` (package files
+kept for rollback, rebuilt from the installed files when no package file exists,
+and held-back bundled ones) and `cache/` (the last download). A fresh image
+records the bundle version it was built from (build date and `0`).
+
+`builder/test-loa-update.sh` tests all this in the CI build, in a chroot of the
+built root with a throwaway key.
+
 ## Aquamarine (patched, `IgnorePkg = aquamarine`)
 
 Hyprland runs on a patched Aquamarine (`patches/aquamarine-0001-shuntian-*.patch`):

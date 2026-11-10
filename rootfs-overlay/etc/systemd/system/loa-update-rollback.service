@@ -1,0 +1,19 @@
+[Unit]
+Description=LoA: roll back an update whose first boot never reached loa-boot-ok
+# /usr/local/bin/loa-update leaves /var/lib/loa-update/pending after an update:
+# "applied" turns into "tried" here on the first boot after it, loa-boot-ok
+# clears "tried", and finding "tried" here means that boot never reached the
+# desktop: roll back (and daemon-reload) before loa-desktop starts. Runs before
+# sysinit, so an update that breaks a later unit is caught too; ordering only,
+# so a failed rollback never holds up the desktop.
+DefaultDependencies=no
+After=local-fs.target
+Before=sysinit.target loa-desktop.service loa-boot-ok.service shutdown.target
+Conflicts=shutdown.target
+ConditionPathExists=/var/lib/loa-update/pending
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/bin/loa-update boot-check
+[Install]
+WantedBy=sysinit.target

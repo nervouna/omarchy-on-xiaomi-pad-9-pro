@@ -1,0 +1,245 @@
+#!/bin/sh
+# Over-the-air update of this port's files from a signed bundle (a release asset
+# of the repo, made by tools/make-update-bundle.sh). Only the owner starts it;
+# nothing runs it on a timer. Root only.
+#   loa-update check        installed version and the latest released one
+#   loa-update --diff       download, verify, show what would change (writes only its cache)
+#   loa-update              download, verify, apply, record
+#   loa-update rollback     undo the last applied update
+# Options: --tag T     the bundle of release T (how a pre-release is tried)
+#          --file PATH a local bundle, with PATH.sig beside it
+#          --force     allow the same or an older version (never an unsigned bundle)
+# `loa-update boot-check` is for loa-update-rollback.service at boot.
+#
+# State in /var/lib/loa-update: version (installed bundle version; none = older
+# than any bundle), last (record of the last applied update: its backup
+# directory, the files it added, the Aquamarine it replaced), pending (boot
+# marker: applied -> tried -> cleared by loa-boot-ok, or rolled back at boot),
+# aquamarine/ (package files kept for rollback or held back), cache/.
+set -u
+REPO=nervouna/omarchy-on-xiaomi-pad-9-pro
+S=/var/lib/loa-update
+C=$S/cache
+SIGNERS=/usr/share/loa/update/allowed_signers
+BACKUPS=/var/backups/loa-overlay
+die() { echo "loa-update: $*" >&2; exit 1; }
+say() { echo "loa-update: $*"; }
+usage() { sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'; exit 0; }
+
+ver_ok() { echo "$1" | grep -Eq '^[0-9]{8}-[0-9]+$'; }
+installed() { v=$(cat $S/version 2>/dev/null); ver_ok "$v" && echo "$v"; }
+newer() {  # A B: version A is newer than B; no B (nothing recorded) is older than any
+    [ -n "$2" ] || return 0
+    [ "${1%-*}" -gt "${2%-*}" ] || { [ "${1%-*}" -eq "${2%-*}" ] && [ "${1#*-}" -gt "${2#*-}" ]; }
+}
+sha() {  # a member's MANIFEST hash: a file's content, a symlink's target
+    if [ -L "$1" ]; then printf '%s' "$(readlink "$1")" | sha256sum | cut -d' ' -f1
+    else sha256sum < "$1" | cut -d' ' -f1; fi
+}
+dbfield() {  # PKG-VER FIELD: the values of %FIELD% in pacman's local database
+    awk -v k="%$2%" '$0 == k {on = 1; next} /^%[A-Z]+%$/ {on = 0} on && NF' "/var/lib/pacman/local/$1/desc"
+}
+
+# Download (or copy) the bundle and its signature into the cache.
+fetch() {
+    rm -rf "${C:?}"/*
+    if [ -n "$FILE" ]; then
+        [ -f "$FILE" ] || die "no such bundle: $FILE"
+        [ -f "$FILE.sig" ] || die "no signature: $FILE.sig is missing"
+        cp "$FILE" $C/loa-update.tar && cp "$FILE.sig" $C/loa-update.tar.sig || die "cannot copy $FILE into $C"
+        return
+    fi
+    if [ -n "$TAG" ]; then U=https://github.com/$REPO/releases/download/$TAG
+    else U=https://github.com/$REPO/releases/latest/download; fi
+    for f in loa-update.tar loa-update.tar.sig; do
+        curl -fsSL --retry 3 --connect-timeout 20 -o "$C/$f" "$U/$f" || die "download failed: $U/$f"
+    done
+}
+
+# Everything before anything is written to the system: signature, member paths,
+# MANIFEST, version. Sets B (the unpacked bundle) and NEW (its version).
+verify() {
+    T=$C/loa-update.tar
+    ssh-keygen -Y verify -f $SIGNERS -I loa-update -n loa-update -s $T.sig < $T >/dev/null 2>&1 ||
+        die "bad signature: the bundle is not signed by the loa-update key; nothing was changed"
+    tar -tf $T > $C/names 2>/dev/null && tar -tvf $T > $C/types 2>/dev/null || die "the bundle is not a readable tar"
+    while IFS= read -r n; do
+        case "$n" in /*) die "unsafe member path in the bundle: $n" ;; esac
+        case "/$n/" in */../*) die "unsafe member path in the bundle: $n" ;; esac
+    done < $C/names
+    cut -c1 $C/types | grep -qv '^[-dl]$' && die "the bundle holds a member that is not a file, directory or symlink"
+    B=$C/bundle; mkdir $B
+    tar -xf $T -C $B --no-same-owner --warning=no-unknown-keyword --warning=no-timestamp 2>/dev/null ||
+        die "cannot unpack the bundle"
+    [ -f $B/MANIFEST ] && [ -f $B/overlay-install.sh ] && [ -d $B/rootfs-overlay ] && [ -d $B/user-defaults ] ||
+        die "incomplete bundle (MANIFEST, overlay-install.sh, rootfs-overlay/, user-defaults/)"
+    NEW=$(sed -n 's/^version //p' $B/MANIFEST | head -1)
+    ver_ok "$NEW" || die "the bundle's MANIFEST has no valid version"
+    grep -v -e '^version ' -e '^commit ' $B/MANIFEST | LC_ALL=C sort > $C/want
+    (cd $B && find . \( -type f -o -type l \) ! -path ./MANIFEST | sed 's|^\./||' |
+        while IFS= read -r f; do echo "$(sha "$f") $f"; done) | LC_ALL=C sort > $C/have
+    cmp -s $C/want $C/have || die "the bundle does not match its MANIFEST (a member is missing, extra or changed)"
+}
+gate() {  # refuse a version that is not newer, unless --force
+    CUR=$(installed)
+    newer "$NEW" "$CUR" && return 0
+    [ "$FORCE" = 1 ] || die "bundle $NEW is not newer than the installed $CUR (--force installs it anyway)"
+}
+
+# Aquamarine: installed only when its version differs from the installed one AND
+# the libaquamarine.so it provides is the one the installed Hyprland depends on.
+# Sets AQ_PKG, AQ_ACTION (none|same|hold|install), AQ_WHY, AQ_NEW, AQ_CUR.
+aq_plan() {
+    AQ_ACTION=none AQ_WHY="" AQ_NEW="" AQ_CUR=""
+    AQ_PKG=$(ls $B/aquamarine-*.pkg.tar.zst 2>/dev/null | head -1)
+    [ -n "$AQ_PKG" ] || return 0
+    info=$(bsdtar -xOf "$AQ_PKG" .PKGINFO 2>/dev/null) || die "cannot read the bundled Aquamarine package"
+    AQ_NEW=$(printf '%s\n' "$info" | sed -n 's/^pkgver = //p' | head -1)
+    so=$(printf '%s\n' "$info" | sed -n 's/^provides = \(libaquamarine\.so.*\)$/\1/p' | head -1)
+    AQ_CUR=$(pacman -Q aquamarine 2>/dev/null | cut -d' ' -f2)
+    hv=$(pacman -Q hyprland 2>/dev/null | cut -d' ' -f2)
+    need=""; [ -n "$hv" ] && need=$(dbfield "hyprland-$hv" DEPENDS | grep '^libaquamarine\.so' | head -1)
+    if [ "$AQ_NEW" = "$AQ_CUR" ]; then
+        AQ_ACTION=same AQ_WHY="Aquamarine $AQ_CUR is already installed"
+    elif [ -z "$AQ_CUR" ]; then
+        AQ_ACTION=hold AQ_WHY="Aquamarine is not installed, so there is nothing to roll back to"
+    elif [ -n "$so" ] && [ "$so" = "$need" ]; then
+        AQ_ACTION=install AQ_WHY="Aquamarine $AQ_CUR -> $AQ_NEW ($so, as Hyprland $hv needs)"
+    else
+        AQ_ACTION=hold AQ_WHY="the bundled Aquamarine $AQ_NEW provides ${so:-no libaquamarine.so}, but the installed Hyprland ${hv:-(none)} needs ${need:-no libaquamarine.so}"
+    fi
+}
+# A package file of an installed package, rebuilt from its files and its local
+# database entry (as builder/in-builder.sh packages Aquamarine; pacman's cache
+# is empty on these images). NAME VERSION OUT
+repack() {
+    d=/var/lib/pacman/local/$1-$2; [ -f "$d/desc" ] || return 1
+    w=$(mktemp -d) || return 1
+    for kv in NAME:pkgname BASE:pkgbase VERSION:pkgver DESC:pkgdesc URL:url ARCH:arch BUILDDATE:builddate \
+              PACKAGER:packager SIZE:size LICENSE:license PROVIDES:provides DEPENDS:depend \
+              CONFLICTS:conflict REPLACES:replaces OPTDEPENDS:optdepend; do
+        dbfield "$1-$2" "${kv%%:*}" | while IFS= read -r v; do echo "${kv#*:} = $v"; done
+    done > "$w/.PKGINFO"
+    (cd / && pacman -Qlq "$1" | sed 's|^/||' | tar --no-recursion -cf - -T -) | tar -xpf - -C "$w" &&
+        (cd "$w" && bsdtar --zstd -cf "$3.part" .PKGINFO *) && mv "$3.part" "$3"
+    rc=$?; rm -rf "$w" "$3.part"; return $rc
+}
+
+apply() {
+    aq_plan
+    R=$S/updates/$NEW-$(date +%Y%m%d-%H%M%S); mkdir -p "$R" $S/aquamarine
+    echo "$NEW" > "$R/version"; echo "$CUR" > "$R/prev-version"; : > "$R/aquamarine-prev"
+    # What this update adds (files and directories that do not exist yet); the
+    # install script itself backs up what it replaces.
+    (cd $B && find rootfs-overlay user-defaults -mindepth 1 | LC_ALL=C sort) | while IFS= read -r m; do
+        p=/${m#*/}; [ -e "$p" ] || [ -L "$p" ] && continue
+        if [ -d "$B/$m" ] && [ ! -L "$B/$m" ]; then echo "d $p"; else echo "f $p"; fi
+    done > "$R/new"
+    sed -n 's/^f //p' "$R/new" > "$R/added"; sed -n 's/^d //p' "$R/new" > "$R/added-dirs"; rm -f "$R/new"
+
+    # 1. Aquamarine.
+    case $AQ_ACTION in
+        install)
+            prev=$S/aquamarine/aquamarine-$AQ_CUR-aarch64.pkg.tar.zst
+            [ -s "$prev" ] || repack aquamarine "$AQ_CUR" "$prev" ||
+                { rm -rf "$R"; die "cannot keep a package of the installed Aquamarine $AQ_CUR for rollback; nothing was changed"; }
+            echo "$prev" > "$R/aquamarine-prev"
+            say "$AQ_WHY (the previous package is kept as $prev)"
+            LOA_AQUAMARINE=1 pacman -U --noconfirm "$AQ_PKG" ||
+                { rm -rf "$R"; die "installing Aquamarine $AQ_NEW failed; nothing else was changed"; } ;;
+        same|hold)
+            cp "$AQ_PKG" $S/aquamarine/; kept=$S/aquamarine/$(basename "$AQ_PKG")
+            if [ $AQ_ACTION = same ]; then say "$AQ_WHY"
+            else say "not installing Aquamarine: $AQ_WHY. Kept as $kept; install it together with a Hyprland that needs it (docs/maintenance.md, \"Over-the-air updates\")"; fi ;;
+    esac
+    echo "$R" > $S/last; echo applied > $S/pending; sync
+
+    # 2. The overlay, through the bundle's own copy of the wired install script.
+    ls $BACKUPS 2>/dev/null > $C/backups-before
+    tar -cf /run/loa-overlay.tar -C $B rootfs-overlay user-defaults || die "cannot stage the overlay in /run"
+    { sh $B/overlay-install.sh apply ''; echo $? > "$R/install-rc"; } 2>&1 | tee "$R/install.log"
+    ls $BACKUPS 2>/dev/null | while IFS= read -r d; do grep -qx "$d" $C/backups-before || echo "$BACKUPS/$d"; done |
+        tail -1 > "$R/backup"
+    rc=$(cat "$R/install-rc" 2>/dev/null); rm -rf $B
+    [ "$rc" = 0 ] || die "the install script failed (exit ${rc:-?}); undo what it did with: loa-update rollback"
+    echo "$NEW" > $S/version; sync
+    say "installed $NEW (was ${CUR:-not recorded}). Reboot to use it; if that boot never reaches the desktop, the next boot rolls it back (loa-update rollback does it by hand)"
+}
+
+rollback() {
+    [ -s $S/last ] || die "nothing to roll back: no update is recorded"
+    R=$(cat $S/last); [ -d "$R" ] || die "the update record $R is missing"
+    BK=$(cat "$R/backup" 2>/dev/null)
+    if [ -n "$BK" ] && [ -d "$BK" ]; then
+        # File by file: the backup's directories are not the originals' (owner, mode).
+        (cd "$BK" && find . \( -type f -o -type l \) | sed 's|^\.||') | while IFS= read -r f; do
+            mkdir -p "$(dirname "$f")"; rm -f "$f"; cp -a "$BK$f" "$f" && echo "restored $f"
+        done
+    fi
+    while IFS= read -r f; do
+        [ -e "$f" ] || [ -L "$f" ] || continue
+        rm -f "$f" && echo "removed $f"
+    done < "$R/added"
+    LC_ALL=C sort -r "$R/added-dirs" | while IFS= read -r d; do rmdir "$d" 2>/dev/null; done
+    prev=$(cat "$R/aquamarine-prev" 2>/dev/null)
+    if [ -n "$prev" ]; then
+        LOA_AQUAMARINE=1 pacman -U --noconfirm "$prev" || die "reinstalling the previous Aquamarine ($prev) failed; run: LOA_AQUAMARINE=1 pacman -U $prev"
+    fi
+    pv=$(cat "$R/prev-version" 2>/dev/null)
+    if [ -n "$pv" ]; then echo "$pv" > $S/version; else rm -f $S/version; fi
+    rm -f $S/last $S/pending; mv "$R" "$R.rolled-back"; sync
+    systemctl daemon-reload >/dev/null 2>&1 || true
+    say "rolled back $(cat "$R.rolled-back/version"); installed version now ${pv:-not recorded}"
+}
+
+# At boot, before the desktop (loa-update-rollback.service). The marker is
+# "applied" until the first boot after the update starts, then "tried" until
+# loa-boot-ok clears it. Finding "tried" means that boot never got there.
+boot_check() {
+    case "$(cat $S/pending 2>/dev/null)" in
+        applied) echo tried > $S/pending; sync
+                 say "first boot after update $(installed): it is rolled back on the next boot unless this one reaches loa-boot-ok" ;;
+        tried) say "the boot after update $(installed) never reached loa-boot-ok: rolling it back"
+               rollback ;;
+    esac
+}
+
+CMD=apply FORCE=0 TAG="" FILE=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        check|rollback|boot-check) CMD=$1 ;;
+        --diff) CMD=diff ;;
+        --force) FORCE=1 ;;
+        --tag) TAG=${2:-}; shift; echo "$TAG" | grep -Eq '^[A-Za-z0-9._-]+$' || die "--tag takes a release tag" ;;
+        --file) FILE=${2:-}; shift; [ -n "$FILE" ] || die "--file takes a path" ;;
+        -h|--help) usage ;;
+        *) die "unknown argument: $1 (loa-update --help)" ;;
+    esac
+    shift
+done
+[ -z "$TAG" ] || [ -z "$FILE" ] || die "--tag and --file exclude each other"
+[ "$(id -u)" = 0 ] || die "run as root: sudo loa-update"
+mkdir -p $C || die "cannot create $C"
+exec 9>>$C/.lock
+flock -n 9 || die "another loa-update is running"
+
+case $CMD in
+    rollback) rollback ;;
+    boot-check) boot_check ;;
+    check)
+        fetch; verify; CUR=$(installed); rm -rf $B
+        say "installed: ${CUR:-not recorded (older than any bundle)}"
+        say "latest:    $NEW (${TAG:-latest release})"
+        if newer "$NEW" "$CUR"; then say "an update is available: sudo loa-update${TAG:+ --tag $TAG}"; else say "up to date"; fi ;;
+    diff)
+        fetch; verify; gate; aq_plan
+        say "bundle $NEW, installed ${CUR:-not recorded}"
+        case $AQ_ACTION in
+            install) say "would install: $AQ_WHY" ;;
+            hold) say "would not install Aquamarine: $AQ_WHY" ;;
+            same) say "$AQ_WHY" ;;
+        esac
+        tar -cf /run/loa-overlay.tar -C $B rootfs-overlay user-defaults || die "cannot stage the overlay in /run"
+        sh $B/overlay-install.sh diff ''; rm -rf $B ;;
+    apply) fetch; verify; gate; apply ;;
+esac
