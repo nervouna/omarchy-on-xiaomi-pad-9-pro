@@ -10,3 +10,12 @@
 
 - For anything you can't check remotely (touch, pen, display, keyboard cover), put a one- or two-line checklist in the PR or issue for the owner to try.
 - Before any change that touches the device, search for relevant history in `docs/`. Lots of gotchas, so be careful.
+
+# Subagent models
+
+This overrides the Haiku/Sonnet default of `/orchestrate`: a wrong change here costs a flash-and-reboot cycle on a tablet, and the platform is barely documented.
+
+- Opus: kernel, drivers, device tree, boot chain, power management, firmware reverse engineering, and any change that has to be verified on a tablet.
+- Sonnet: build scripts, CI, and overlay changes with a clear spec.
+- Haiku: documentation, lists, mechanical tidying.
+- Diagnosis with an unknown cause stays with the orchestrator: find the cause first, then dispatch the fix as a spec.
