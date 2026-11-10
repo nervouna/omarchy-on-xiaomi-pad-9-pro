@@ -91,6 +91,37 @@ The golden image already contains them; check with `pacman -Q` after other insta
 | mise | GitHub binary to `/usr/local/bin/mise` (check SHASUMS256) |
 | Coding agents | `mise up` (alias `mup`), never their self-updaters |
 
+## Root image from CI
+
+`.github/workflows/build-image.yml` builds the from-scratch root image
+(`builder/build-image.sh`, runbook 1A) on a GitHub-hosted `ubuntu-24.04-arm`
+runner: it unpacks the signature-checked Arch Linux ARM tarball, enters it with
+`chroot` and runs the builder there as root. It runs on every push to `main`, on
+pull requests that touch `builder/`, `rootfs-overlay/`, `patches/`,
+`user-defaults/`, `tools/overlay-install.sh` or the workflow, and on demand
+(Actions > Build image > Run workflow). A separate `check-public` job runs
+`tools/check-public.sh` on every push and pull request.
+
+The job checks the image (`sha256sum -c`, `zstd -t`, a 16 GiB size, `e2fsck -fn`
+on the decompressed file) and uploads the artifact `omarchy-scratch-image` for
+14 days: `omarchy-scratch-DATE.img.zst` and its `.sha256`. To get it:
+
+```
+gh run list --workflow build-image.yml --status success --limit 1
+gh run download <run-id> -n omarchy-scratch-image -D /tmp/omarchy-image
+(cd /tmp/omarchy-image && shasum -a 256 -c *.sha256)
+```
+
+The image has no SSH key, Android property snapshot or `images/pkgs` extras
+(local-only inputs): add the key with `tools/apply-overlay.sh` after the first
+boot, or build locally for an image that has them.
+
+The job fails when the build log reports an Omarchy patch that no longer
+applies (`LoA: WARNING: <patch> no longer applies`), except the patches listed
+in `EXPECTED_STALE_PATCHES` at the top of the workflow (now `0007` and `0008`,
+see above). When you delete a stale patch, remove it from that list too; when an
+Omarchy update breaks another one, fix or drop the patch.
+
 ## Backups
 
 Full root backup to the Mac (the live system is fine; sockets are skipped):
