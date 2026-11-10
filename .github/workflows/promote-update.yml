@@ -1,0 +1,63 @@
+name: Promote update
+
+# Makes a canary-tested pre-release the latest release, without rebuilding or
+# uploading anything: the bytes the tablet tested are the bytes it clears.
+# Actions > Promote update > Run workflow, on main, with the tag and the sha256
+# the canary recorded (docs/maintenance.md, "Over-the-air updates").
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag, update-YYYYMMDD-N
+        required: true
+        type: string
+      sha256:
+        description: sha256 of loa-update.tar as checked on the canary tablet
+        required: true
+        type: string
+
+permissions: {}
+
+jobs:
+  promote:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ inputs.tag }}
+      SHA256: ${{ inputs.sha256 }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the inputs
+        run: |
+          set -euo pipefail
+          printf '%s\n' "$SHA256" | grep -Eq '^[0-9a-f]{64}$' || { echo "::error::sha256 must be 64 lowercase hex digits"; exit 1; }
+          printf '%s\n' "$TAG" | grep -Eq '^update-[0-9]{8}-[0-9]+$' || { echo "::error::tag must be update-YYYYMMDD-N"; exit 1; }
+
+      - name: Check the release is a pre-release and nothing newer is latest
+        run: |
+          set -euo pipefail
+          [ "$(gh release view "$TAG" --json isPrerelease --jq .isPrerelease)" = true ] ||
+            { echo "::error::$TAG is not a pre-release"; exit 1; }
+          gh release list --limit 1000 --json tagName,isLatest --jq '.[] | select(.isLatest) | .tagName' > "$RUNNER_TEMP/latest.txt"
+          echo "latest release: $(cat "$RUNNER_TEMP/latest.txt")"
+          tools/check-update-tag.sh "$TAG" --skip-ancestry --releases "$RUNNER_TEMP/latest.txt"
+
+      - name: Check the assets are the tested bytes and signed
+        run: |
+          set -euo pipefail
+          gh release download "$TAG" --dir assets --pattern loa-update.tar --pattern loa-update.tar.sig
+          [ "$(ls assets | wc -l)" -eq 2 ]
+          sum=$(sha256sum assets/loa-update.tar | cut -d' ' -f1)
+          [ "$sum" = "$SHA256" ] || { echo "::error::loa-update.tar has sha256 $sum, not $SHA256"; exit 1; }
+          ssh-keygen -Y verify -f rootfs-overlay/usr/share/loa/update/allowed_signers -I loa-update -n loa-update \
+            -s assets/loa-update.tar.sig < assets/loa-update.tar
+          [ "$(tar -xOf assets/loa-update.tar MANIFEST | sed -n 1p)" = "version ${TAG#update-}" ]
+
+      - name: Make it the latest release
+        run: gh release edit "$TAG" --prerelease=false --latest
