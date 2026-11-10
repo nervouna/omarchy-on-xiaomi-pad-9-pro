@@ -163,13 +163,19 @@ after them.
 - **300 s deadline.** `loa-update-deadline.service`: 300 s into a boot whose
   marker is `tried` or `applying` and that has not reached `loa-boot-ok` (no
   `/run/loa-boot-ok`), the tablet rolls the update back, resets the stage-1 boot
-  counter if the rollback completed, and reboots by itself. It never acts on any
-  other marker, so a boot without a pending update is never rebooted.
+  counter if the rollback completed, and reboots by itself. If `loa-desktop` is
+  active at that point it first waits up to 60 s more for `loa-boot-ok`, whose
+  own 20 s wait does not advance while the tablet is asleep (a tablet that
+  suspends right after the desktop came up wakes past the 300 s before
+  `loa-boot-ok`); a desktop that is not active (failed, or between restarts)
+  gets no wait. It never acts on any other marker, so a boot without a pending
+  update is never rebooted.
 - **10 minutes of trial.** `loa-update-confirm.service` runs
   `loa-update confirm` 10 minutes after `loa-boot-ok` if `loa-desktop` is still
   active; that deletes the marker and the update is kept. It waits for a
   `loa-update check` or `--diff` that is running at that moment (a download
-  gives up after 120 s per try). `sudo loa-update
+  gives up when it stays below 1 kB/s for 60 s, or after 30 minutes, per try;
+  three retries). `sudo loa-update
   confirm` does the same at once (only on `booted`). There is no confirm at
   shutdown: **a good update that is rebooted or powered off within its 10
   minutes is rolled back** by the next boot. Install it again (`sudo loa-update`, or
@@ -187,9 +193,10 @@ One update at a time: `loa-update` refuses a new update while the marker is
 (reboot and wait, `loa-update confirm`, or `loa-update rollback`). Do not run
 `omarchy update` between an update and the boot that confirms it either: a
 rollback would then undo the update on top of a changed system. `loa-update
-check` shows the marker and the last rollback (time, version, and what
-triggered it: `manual`, `install-failed`, `applying`, `tried`, `booted`,
-`deadline`) before it downloads anything.
+check` shows the installed version, the marker and the last rollback (time,
+version, and what triggered it: `manual`, `install-failed`, `applying`, `tried`,
+`booted`, `deadline`) before it downloads anything, so a failed download still
+shows them.
 
 **State**, all in `/var/lib/loa-update/`: `version`, `pending` and
 `pending-boot` (the boot id of the boot that installed the update), `last` (path

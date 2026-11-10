@@ -168,6 +168,12 @@ pass "check shows the last rollback and keeps the cached bundle"
 swap_key; lu --file $S/cache/loa-update.tar && [ "$(cat $S/version)" = 29990101-2 ] && [ ! -e $S/last-rollback ] ||
     fail "the cached bundle applies again after its rollback"
 pass "the cached bundle applies again after its rollback"
+# A bundle that cannot be had (here a missing file): check still shows the
+# installed version and the update state, then fails.
+lu check --file $W/missing/loa-update.tar && fail "check without a bundle exits 0"
+grep -qx 'loa-update: installed: 29990101-2' $W/out && grep -q 'update state: 29990101-2 installed, not booted yet' $W/out &&
+    grep -q 'no such bundle' $W/out || fail "check without a bundle shows the installed version and the update state, then fails"
+pass "check without a bundle shows the installed version and the update state, then fails"
 lu rollback && [ "$(last_rollback)" = "29990101-2 manual" ] || fail "a rollback by hand is recorded as 29990101-2 manual (got '$(last_rollback)')"
 pass "a rollback records the version and what triggered it"
 
@@ -283,9 +289,11 @@ same $F $W/F.before4 && [ ! -e $N ] && [ "$(cat $S/version)" = "$vbefore" ] ||
 pass "an update after an interrupted install rolls that install back first"
 
 # 9. The deadline (loa-update-deadline.service, 300 s into a boot), with a
-# systemctl in PATH that only logs.
+# systemctl in PATH that logs to systemctl.log everything but `is-active`, which
+# it answers (active while $W/desktop-active exists) and only counts.
 mkdir -p $W/bin
-printf '#!/bin/sh\necho "$*" >> %s/systemctl.log\n' $W > $W/bin/systemctl; chmod 755 $W/bin/systemctl
+printf '#!/bin/sh\n[ "$1" = is-active ] && { echo >> %s/is-active.log; [ -e %s/desktop-active ]; exit; }\necho "$*" >> %s/systemctl.log\n' $W $W $W > $W/bin/systemctl
+chmod 755 $W/bin/systemctl
 deadline() { PATH=$W/bin:$PATH "$LU" boot-deadline > $W/out 2>&1; }
 echo "-- changed a fifth time" >> $F; cp -a $F $W/F.before5; rm -f $N
 bundle 29990101-11 $W/b11 $W/k1
@@ -299,6 +307,15 @@ deadline && [ "$(marker)" = tried ] && same $F $W/repo/rootfs-overlay$F && [ ! -
     [ "$(cat /loa/boot-attempts)" = 2 ] || fail "the deadline leaves a boot alone that reached loa-boot-ok"
 pass "the deadline leaves an update alone when the boot reached loa-boot-ok or the marker is not 'tried'"
 rm -f /run/loa-boot-ok
+# A desktop that is active but has not reached loa-boot-ok yet (its 20 s wait
+# stood still while the tablet slept): the deadline waits for the flag.
+touch $W/desktop-active
+(sleep 2; touch /run/loa-boot-ok) & flagger=$!
+deadline; rc=$?; wait $flagger
+[ $rc = 0 ] && [ "$(marker)" = tried ] && same $F $W/repo/rootfs-overlay$F && [ ! -e $W/systemctl.log ] &&
+    [ "$(cat /loa/boot-attempts)" = 2 ] || fail "the deadline waits for loa-boot-ok while loa-desktop is active"
+rm -f /run/loa-boot-ok $W/desktop-active
+pass "the deadline waits for loa-boot-ok while loa-desktop is active, and leaves the update alone once it comes"
 # A rollback that fails (its record is missing): the deadline still reboots
 # and leaves the stage-1 counter as it was.
 r=$(cat $S/last); mv "$r" "$r.x"
@@ -312,6 +329,18 @@ same $F $W/F.before5 && [ ! -e $N ] && [ ! -e $S/pending ] && [ ! -e $S/pending-
     grep -qx -e '--no-block reboot' $W/systemctl.log && [ "$(last_rollback)" = "29990101-11 deadline" ] ||
     fail "the deadline rolls back, resets the boot counter and reboots"
 pass "300 s into a boot of an update without loa-boot-ok, the deadline rolls back, resets the boot counter and reboots"
+# An active desktop that never reaches loa-boot-ok: the deadline acts after its
+# wait (shortened to 3 s), not before.
+swap_key; lu --file $W/b11/loa-update.tar && later_boot && lu boot-check && [ "$(marker)" = tried ] ||
+    fail "applying the bundle for the deadline with an active desktop"
+echo 2 > /loa/boot-attempts; rm -f /run/loa-boot-ok $W/systemctl.log $W/is-active.log; touch $W/desktop-active
+t0=$(date +%s)
+PATH=$W/bin:$PATH LOA_DEADLINE_GRACE=3 "$LU" boot-deadline > $W/out 2>&1
+waited=$(($(date +%s) - t0)); rm -f $W/desktop-active
+[ "$(wc -l < $W/is-active.log 2>/dev/null)" = 3 ] && [ $waited -ge 3 ] && same $F $W/F.before5 && [ ! -e $N ] && [ ! -e $S/pending ] && [ "$(cat /loa/boot-attempts)" = 0 ] &&
+    grep -qx -e '--no-block reboot' $W/systemctl.log && [ "$(last_rollback)" = "29990101-11 deadline" ] ||
+    fail "the deadline rolls back and reboots after its wait when an active desktop never reaches loa-boot-ok (waited ${waited}s)"
+pass "with loa-desktop active and no loa-boot-ok, the deadline rolls back and reboots after its wait"
 
 # 10. Last: an update that installs a broken loa-update (only `exit 1`). The
 # boot check runs through the unit's ExecStart, as systemd does, so the copy
@@ -427,10 +456,13 @@ pass "a rollback whose Aquamarine step fails stays 'applying': loa-boot-ok does 
 bundle 29990102-3 $W/c3 $W/k1
 swap_key; lu --file $W/c3/loa-update.tar || fail "applying the bundle for confirm under the lock"
 later_boot; lu boot-check && eval "$okcmd" > /dev/null 2>&1 && [ "$(marker)" = booted ] || fail "the update for confirm under the lock is 'booted'"
-flock $S/cache/.lock sleep 5 & holder=$!
+# The holder touches `released` while it still holds the lock, and the test
+# looks for it before it waits for the holder: only a confirm that waited sees it.
+rm -f $W/released
+flock $S/cache/.lock sh -c "sleep 5; touch $W/released" & holder=$!
 i=0; while flock -n $S/cache/.lock true; do i=$((i + 1)); [ $i -lt 50 ] || fail "the test takes loa-update's lock"; sleep 0.1; done
-lu confirm; rc=$?; wait $holder
-[ $rc = 0 ] && [ ! -e $S/pending ] || fail "confirm waits for another loa-update's lock and then keeps the update"
+lu confirm; rc=$?; [ -e $W/released ]; rel=$?; wait $holder
+[ $rc = 0 ] && [ $rel = 0 ] && [ ! -e $S/pending ] || fail "confirm waits for another loa-update's lock and then keeps the update"
 pass "confirm waits while another loa-update holds the lock, then keeps the update"
 
 # 16. A marker that names no state (an empty write).

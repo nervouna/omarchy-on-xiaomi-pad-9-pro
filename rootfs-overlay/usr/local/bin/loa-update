@@ -69,7 +69,7 @@ fetch() {
         if [ -n "$TAG" ]; then U=https://github.com/$REPO/releases/download/$TAG
         else U=https://github.com/$REPO/releases/latest/download; fi
         for f in loa-update.tar loa-update.tar.sig; do
-            curl -fsSL --retry 3 --connect-timeout 20 --max-time 120 -o "$C/$f.part" "$U/$f" || die "download failed: $U/$f"
+            curl -fsSL --retry 3 --connect-timeout 20 --speed-limit 1024 --speed-time 60 --max-time 1800 -o "$C/$f.part" "$U/$f" || die "download failed: $U/$f"
         done
     fi
     mv $C/loa-update.tar.part $C/loa-update.tar && mv $C/loa-update.tar.sig.part $C/loa-update.tar.sig ||
@@ -233,12 +233,15 @@ rollback() {
         die "cannot write the update marker; nothing was rolled back"
     rm -f "$R/rollback-error" "$R/restore-failed"; sync
     BK=$(cat "$R/backup" 2>/dev/null)
+    bad=""
     if [ -n "$BK" ] && [ -d "$BK" ]; then
         # File by file: the backup's directories are not the originals' (owner, mode).
-        (cd "$BK" && find . \( -type f -o -type l \) | sed 's|^\.||') | while IFS= read -r f; do
+        # A failed copy also fails the loop, in case restore-failed cannot be
+        # written either (a full disk).
+        (cd "$BK" && find . \( -type f -o -type l \) | sed 's|^\.||') | ( rc=0; while IFS= read -r f; do
             mkdir -p "$(dirname "$f")"; rm -f "$f"
-            if cp -a "$BK$f" "$f"; then echo "restored $f"; else echo "$f" >> "$R/restore-failed"; fi
-        done
+            if cp -a "$BK$f" "$f"; then echo "restored $f"; else rc=1; echo "$f" >> "$R/restore-failed"; fi
+        done; exit $rc ) || bad=1
     fi
     while IFS= read -r f; do
         [ -e "$f" ] || [ -L "$f" ] || continue
@@ -252,7 +255,8 @@ rollback() {
         LOA_AQUAMARINE=1 pacman -U --noconfirm "$prev" ||
             rollback_failed "reinstalling the previous Aquamarine ($prev) failed"
     fi
-    [ ! -s "$R/restore-failed" ] || rollback_failed "could not restore: $(tr '\n' ' ' < "$R/restore-failed")"
+    [ -z "$bad" ] && [ ! -s "$R/restore-failed" ] ||
+        rollback_failed "could not restore: $(tr '\n' ' ' < "$R/restore-failed" 2>/dev/null || echo "a file of $BK")"
     pv=$(cat "$R/prev-version" 2>/dev/null)
     if [ -n "$pv" ]; then echo "$pv" > $S/version; else rm -f $S/version; fi
     echo "$(date +%Y-%m-%dT%H:%M:%S) $(cat "$R/version") $1" > $S/last-rollback
@@ -303,9 +307,18 @@ boot_check() {
 # rolls it back and reboots. Also when the rollback fails: the next boot check
 # tries again, and stage 1 counts the boots (the counter is reset only after a
 # completed rollback).
+# While loa-desktop is active it first waits up to 60 s more for loa-boot-ok:
+# its 20 s wait does not run while the tablet is asleep, the 300 s do. A
+# desktop that is not active (failed, or activating between restarts) gets no
+# wait. LOA_DEADLINE_GRACE shortens the wait for the tests only.
 boot_deadline() {
     [ -e /run/loa-boot-ok ] && return 0
     case "$(cat $S/pending 2>/dev/null)" in tried|applying) ;; *) return 0 ;; esac
+    i=0
+    while [ ! -e /run/loa-boot-ok ] && [ $i -lt "${LOA_DEADLINE_GRACE:-60}" ] && systemctl is-active --quiet loa-desktop.service; do
+        sleep 1; i=$((i + 1))
+    done
+    [ -e /run/loa-boot-ok ] && return 0
     say "update $(pending_version) has not reached loa-boot-ok 300 s into its boot: rolling it back and rebooting"
     if ( rollback deadline ); then mkdir -p /loa; echo 0 > /loa/boot-attempts; fi
     sync; systemctl --no-block reboot
@@ -380,9 +393,11 @@ case $CMD in
     boot-check) boot_check ;;
     boot-deadline) boot_deadline ;;
     check)
-        state
-        fetch; verify; CUR=$(installed); rm -rf $B
+        # Everything known without the bundle first, so a failed download still shows it.
+        CUR=$(installed)
         say "installed: ${CUR:-not recorded (older than any bundle)}"
+        state
+        fetch; verify; rm -rf $B
         say "latest:    $NEW (${TAG:-latest release})"
         if newer "$NEW" "$CUR"; then say "an update is available: sudo loa-update${TAG:+ --tag $TAG}"; else say "up to date"; fi ;;
     diff)
