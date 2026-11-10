@@ -12,7 +12,7 @@ This is a personal project for one tablet model, but bug reports and fixes are w
 
 The author develops the port with a lot of help from AI coding agents. [docs/engineering-log.md](docs/engineering-log.md) records what was tried and why; [docs/status.md](docs/status.md) and [docs/maintenance.md](docs/maintenance.md) are kept up to date with what works and how to maintain it. A change that alters what works or how to install should update those docs and both READMEs (`README.md` and `README.zh-CN.md`).
 
-Before you push, run `tools/check-public.sh`. It must print `check-public: clean`: no keys, device identifiers, personal names or home paths in anything git would publish. Never commit files from `images/` or `keys/`, the Android property snapshot, or vendor binaries.
+Before you push, run `tools/check-public.sh` and `tools/lint.sh`. The first must print `check-public: clean`: no keys, device identifiers, personal names or home paths in anything git would publish. The second checks script syntax. CI runs both on every pull request, and `main` only takes pull requests whose `ci` check passed. Never commit files from `images/` or `keys/`, the Android property snapshot, or vendor binaries.
 
 Never change what the tools write to the tablet without saying so plainly in the pull request: the install path must keep Fastboot reachable.
 
