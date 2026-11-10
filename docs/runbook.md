@@ -16,7 +16,9 @@ exactly that build.
   `python3` (`brew install android-platform-tools zstd lz4`). `zig` and the
   NDK only matter if you rebuild the helpers (`tools/build.sh`).
 - `images/init_boot-stock-OS4.0.5.0.img` (sha256 `61427d71…`): the
-  `init_boot.img` from the official fastboot ROM of that build.
+  `init_boot.img` from the official fastboot ROM of that build
+  (`tools/fetch-stock-init-boot.sh ROM.tgz` extracts it). Without that file, section 3
+  can build from a dump of an `init_boot` that holds our image.
 - `keys/loa_shuntian` (+ `.pub`): your SSH key for `tools/tssh`
   (`ssh-keygen -t ed25519 -N '' -f keys/loa_shuntian`). The repo ships no key;
   the builder and `tools/apply-overlay.sh` add `keys/*.pub` to root's
@@ -75,6 +77,7 @@ tools/make-image.sh --clean --reset-hypr --apply   # ~15 min; -> images/omarchy-
 
 ```
 python3 boot/build-init-boot.py        # -> images/init_boot-omarchy.img
+python3 boot/build-init-boot.py --from-device-image DUMP   # stock ramdisk and header from a dump of our init_boot
 ```
 
 It packs `boot/initramfs` (busybox stage 1, `loa-helper`) plus the stock

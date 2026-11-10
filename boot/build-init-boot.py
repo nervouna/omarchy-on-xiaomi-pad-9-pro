@@ -1,11 +1,17 @@
 #!/usr/bin/env python3
 """Build init_boot-omarchy.img: stock init_boot v4 header + our lz4-legacy newc cpio.
 Same packing as the proven V8-V13 probe images (header ramdisk size at 12,
-signature size zeroed at 1580)."""
-import hashlib, os, pathlib, shutil, subprocess, sys
+signature size zeroed at 1580).
+--from-device-image DUMP takes the header and the stock ramdisk from a dump of
+our own init_boot instead of images/init_boot-stock-OS4.0.5.0.img."""
+import argparse, hashlib, os, pathlib, shutil, subprocess, sys
 # Env: LOA_ROOT_PARTS overrides the root partition order (e.g. "ramdump omarchy" to
 # test a new image on ramdump while the old root stays on omarchy);
 # LOA_INIT_BOOT_OUT sets the output file name under images/.
+ap = argparse.ArgumentParser(description="Build images/init_boot-omarchy.img.")
+ap.add_argument("--from-device-image", metavar="DUMP",
+                help="header and stock ramdisk from a dump of our init_boot (drops our own entries, init.android stays stock)")
+args = ap.parse_args()
 LZ4 = shutil.which("lz4") or "/opt/homebrew/bin/lz4"
 here = pathlib.Path(__file__).resolve().parent
 work = here.parent
@@ -41,14 +47,21 @@ def newc_entries(buf):
         data = buf[off:off + fsize]; off = (off + fsize + 3) & ~3
         if name == "TRAILER!!!": return
         yield name, mode, data
-stock_img = (work / "images/init_boot-stock-OS4.0.5.0.img").read_bytes()
-rd_size = int.from_bytes(stock_img[12:16], "little")
-stock_lz4 = here / "stock-ramdisk.lz4"; stock_lz4.write_bytes(stock_img[4096:4096 + rd_size])
+# Our own entries are rebuilt above, so a dump of our image contributes only its
+# stock entries: "init.android" (stock /init) is kept under that name, and the
+# names we add (bin, bin/*, loa, loa/*, init) are skipped as in the stock path.
+src_path = pathlib.Path(args.from_device_image) if args.from_device_image else work / "images/init_boot-stock-OS4.0.5.0.img"
+src = src_path.read_bytes()
+assert src[:8] == b"ANDROID!" and int.from_bytes(src[40:44], "little") == 4, f"{src_path}: not a v4 init_boot"
+rd_size = int.from_bytes(src[12:16], "little")
+stock_lz4 = here / "stock-ramdisk.lz4"; stock_lz4.write_bytes(src[4096:4096 + rd_size])
 stock_cpio = subprocess.run([LZ4, "-d", "-c", str(stock_lz4)], check=True, capture_output=True).stdout
 have = {e[0] for e in entries}
 for name, mode, data in newc_entries(stock_cpio):
     if name == ".": continue
-    if name == "init": name = "init.android"
+    if args.from_device_image:
+        if name in have: continue  # our own init (and bin, loa) before any renaming
+    elif name == "init": name = "init.android"
     if name in have: continue
     add(name, mode, data)
 out = bytearray(); ino = 1
@@ -66,12 +79,10 @@ cpio = here / "initramfs.cpio"; cpio.write_bytes(out)
 lz4 = here / "initramfs.lz4"
 subprocess.run([LZ4, "-l", "-f", "-q", str(cpio), str(lz4)], check=True)
 rd = lz4.read_bytes()
-stock = (work / "images/init_boot-stock-OS4.0.5.0.img").read_bytes()
-assert stock[:8] == b"ANDROID!" and int.from_bytes(stock[40:44], "little") == 4
-hdr = bytearray(stock[:4096])
+hdr = bytearray(src[:4096])
 hdr[12:16] = len(rd).to_bytes(4, "little")
 hdr[1580:1584] = (0).to_bytes(4, "little")
 img = bytes(hdr) + rd; img += b"\0" * (-len(img) % 4096)
-assert len(img) <= len(stock), "exceeds init_boot partition"
+assert len(img) <= len(src), "exceeds init_boot partition"
 dst = work / "images" / os.environ.get("LOA_INIT_BOOT_OUT", "init_boot-omarchy.img"); dst.write_bytes(img)
 print(f"{dst.name}: {len(img)} bytes, ramdisk {len(rd)}, sha256 {hashlib.sha256(img).hexdigest()}")
