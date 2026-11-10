@@ -2,8 +2,9 @@
 Description=LoA: boot check of an over-the-air update (roll back a failed one)
 # Runs `loa-update boot-check` on the marker /var/lib/loa-update/pending (states
 # in /usr/local/bin/loa-update): "applied" from an earlier boot turns into
-# "tried"; "applying", "tried" or "booted" means the install or the last boot
-# of the update failed: roll back (and daemon-reload). Before the early LoA
+# "tried"; "applying", "tried" or "booted" means the install, a rollback or the
+# last boot of the update failed: roll back (and daemon-reload); an empty or
+# unknown marker is rolled back if an update is recorded. Before the early LoA
 # units and udev, so an update that breaks early boot is caught too; ordering
 # only, so a failed rollback never holds up the boot. No After=: local-fs.target
 # would close a cycle (tmp.mount -> swap.target -> loa-zram -> loa-mdev), and
