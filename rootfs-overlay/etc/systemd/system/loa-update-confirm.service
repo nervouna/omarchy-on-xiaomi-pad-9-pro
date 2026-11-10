@@ -1,0 +1,14 @@
+[Unit]
+Description=LoA: keep an over-the-air update once the desktop has run 10 minutes
+# loa-boot-ok turns the marker "tried" into "booted", and a boot check that
+# finds "booted" rolls the update back. Ten minutes on, with the desktop still
+# up, `loa-update confirm` deletes the marker. No confirm at shutdown: a good
+# update rebooted within its 10 minutes is rolled back.
+Requires=loa-boot-ok.service
+After=loa-boot-ok.service
+ConditionPathExists=/var/lib/loa-update/pending
+[Service]
+Type=simple
+ExecStart=/bin/sh -c 'sleep 600; systemctl is-active --quiet loa-desktop.service && exec /usr/local/bin/loa-update confirm'
+[Install]
+WantedBy=graphical.target

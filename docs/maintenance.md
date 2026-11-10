@@ -71,6 +71,7 @@ sudo loa-update                   # download, verify, apply, record
 sudo loa-update --tag <T>         # the bundle of release <T> (how a pre-release is tried)
 sudo loa-update --file <PATH>     # a local bundle, <PATH>.sig beside it
 sudo loa-update rollback          # undo the last applied update
+sudo loa-update confirm           # keep an update now (it is kept by itself after 10 minutes on the desktop)
 ```
 
 `releases/latest` never resolves to a pre-release, so a plain `loa-update` only
@@ -108,20 +109,65 @@ Aquamarine if it changed it, and restores the recorded version. It is one level
 deep: the last applied update. Not undone: units newly enabled by the install
 script, and its other steps (pacman channel, groups, icons).
 
-Automatic: the update leaves `/var/lib/loa-update/pending` = `applied`.
-`loa-update-rollback.service` (before `sysinit.target` and `loa-desktop`) turns
-it into `tried` on the first boot after the update, and `loa-boot-ok` deletes
-`tried`. If the next boot still finds `tried`, that boot never reached the
-desktop: it rolls back and reloads systemd before the desktop starts. So one
-failed boot is enough, well before stage 1 gives up after three.
+If the install script fails, `loa-update` rolls back what it did at once and
+exits non-zero. An install that was killed (power loss, a closed terminal) is
+rolled back by the next boot, or by the next `loa-update` before it installs
+anything.
 
-**State**, all in `/var/lib/loa-update/`: `version`, `pending`, `last` (path
-of the last update's record), `updates/<version>-<time>/` (its backup
-directory, added files and directories, previous version, previous Aquamarine
-package, install log; `.rolled-back` once undone), `aquamarine/` (package files
-kept for rollback, rebuilt from the installed files when no package file exists,
-and held-back bundled ones) and `cache/` (the last download). A fresh image
-records the bundle version it was built from (build date and `0`).
+**Automatic rollback.** The marker `/var/lib/loa-update/pending` follows the
+update from the install to the confirmed boot:
+
+| Marker | Written by | The boot check (`loa-update-rollback.service`) does |
+|---|---|---|
+| `applying` | `loa-update`, before the install script runs | rolls back at once |
+| `applied` | `loa-update`, after the install script succeeded | nothing in the boot that installed it; in a later boot, sets `tried` |
+| `tried` | the boot check | rolls back: the last boot never reached `loa-boot-ok` |
+| `booted` | `loa-boot-ok` (desktop up for 20 s) | rolls back: the last boot ended within its 10 minutes of trial |
+| (none) | `loa-update confirm`, or a rollback | nothing |
+
+The boot check runs before the early LoA units (`loa-mdev`, `loa-modules`,
+`loa-zram`, `loa-vendor-import`) and udev, through the copy of `loa-update`
+kept with the update's record, so an update that breaks early boot or ships a
+broken `loa-update` is still rolled back. It reloads systemd after a rollback.
+
+- **300 s deadline.** `loa-update-deadline.service`: 300 s into a boot whose
+  marker is `tried` and that has not reached `loa-boot-ok` (no
+  `/run/loa-boot-ok`), the tablet rolls the update back, resets the stage-1 boot
+  counter and reboots by itself. It never acts on any other marker, so a boot
+  without a pending update is never rebooted.
+- **10 minutes of trial.** `loa-update-confirm.service` runs
+  `loa-update confirm` 10 minutes after `loa-boot-ok` if `loa-desktop` is still
+  active; that deletes the marker and the update is kept. `sudo loa-update
+  confirm` does the same at once (only on `booted`). There is no confirm at
+  shutdown: **a good update that is rebooted within its 10 minutes is rolled
+  back** by the next boot. Install it again (`sudo loa-update`, or
+  `--file /var/lib/loa-update/cache/loa-update.tar` without a network) and let
+  the desktop run 10 minutes.
+- **Screen dark or touch dead after the reboot.** Hold Power until the tablet
+  restarts, within the 10 minutes. **Placeholder, to be measured by the owner on
+  the 8 GB tablet: how many seconds of holding Power force the restart, and that
+  it boots Omarchy rather than Fastboot.** That boot finds `tried` or `booted`
+  and rolls the update back. With systemd up but no desktop, the deadline does
+  it after 300 s without a key press.
+
+One update at a time: `loa-update` refuses a new update while the marker is
+`applied`, `tried` or `booted` (also with `--force`), and says how to get out
+(reboot and wait, `loa-update confirm`, or `loa-update rollback`). Do not run
+`omarchy update` between an update and the boot that confirms it either: a
+rollback would then undo the update on top of a changed system. `loa-update
+check` shows the marker and the last rollback (time, version, and what
+triggered it: `manual`, `install-failed`, `applying`, `tried`, `booted`,
+`deadline`) before it downloads anything.
+
+**State**, all in `/var/lib/loa-update/`: `version`, `pending` and
+`pending-boot` (the boot id of the boot that installed the update), `last` (path
+of the last update's record), `last-rollback`, `updates/<version>-<time>/` (its
+backup directory, added files and directories, previous version, previous
+Aquamarine package, install log, the `loa-update` that wrote it; `.rolled-back`
+once undone), `aquamarine/` (package files kept for rollback, rebuilt from the
+installed files when no package file exists, and held-back bundled ones) and
+`cache/` (the last download, kept until a newer one has fully arrived). A fresh
+image records the bundle version it was built from (build date and `0`).
 
 `builder/test-loa-update.sh` tests all this in the CI build, in a chroot of the
 built root with a throwaway key.

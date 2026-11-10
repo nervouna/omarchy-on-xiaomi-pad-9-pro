@@ -7,8 +7,9 @@ Type=oneshot
 RemainAfterExit=yes
 ExecStartPre=/usr/bin/sleep 20
 ExecStartPre=/usr/bin/systemctl is-active --quiet loa-desktop.service
-# Also clears loa-update's boot marker once a boot after an update got here
-# ("tried", set by loa-update-rollback.service), never one not yet tried.
-ExecStart=/usr/bin/sh -c 'echo 0 > /loa/boot-attempts; grep -qx tried /var/lib/loa-update/pending 2>/dev/null && rm -f /var/lib/loa-update/pending; touch /run/loa-boot-ok; sync'
+# Also moves loa-update's boot marker from "tried" (set by
+# loa-update-rollback.service) to "booted": the update stays on trial until
+# loa-update-confirm.service. Never touches a marker not yet tried.
+ExecStart=/usr/bin/sh -c 'echo 0 > /loa/boot-attempts; grep -qx tried /var/lib/loa-update/pending 2>/dev/null && echo booted > /var/lib/loa-update/pending; touch /run/loa-boot-ok; sync'
 [Install]
 WantedBy=graphical.target
