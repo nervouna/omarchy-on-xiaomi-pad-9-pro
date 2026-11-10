@@ -197,8 +197,8 @@ apply() {
     cat /proc/sys/kernel/random/boot_id > $S/pending-boot; echo applied > $S/pending; sync
     say "installed $NEW (was ${CUR:-not recorded}). Reboot to use it."
     say "That boot is a trial: the update is kept once the desktop has run for 10 minutes (or after: sudo loa-update confirm)."
-    say "It is rolled back by itself if the tablet reboots before then, or if the desktop is not up 5 minutes into the boot."
-    say "Screen dark or touch dead after the reboot: hold Power until the tablet restarts; that boot rolls the update back."
+    say "It is rolled back by itself if the tablet reboots or powers off before then, or if the desktop is not up 5 minutes into the boot."
+    say "Screen dark or touch dead after the reboot: hold Power until the tablet restarts, within the 10 minutes; that boot rolls the update back."
 }
 
 # TRIGGER (manual, install-failed, applying, tried, booted, deadline) goes to

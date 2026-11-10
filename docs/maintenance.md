@@ -139,8 +139,8 @@ broken `loa-update` is still rolled back. It reloads systemd after a rollback.
   `loa-update confirm` 10 minutes after `loa-boot-ok` if `loa-desktop` is still
   active; that deletes the marker and the update is kept. `sudo loa-update
   confirm` does the same at once (only on `booted`). There is no confirm at
-  shutdown: **a good update that is rebooted within its 10 minutes is rolled
-  back** by the next boot. Install it again (`sudo loa-update`, or
+  shutdown: **a good update that is rebooted or powered off within its 10
+  minutes is rolled back** by the next boot. Install it again (`sudo loa-update`, or
   `--file /var/lib/loa-update/cache/loa-update.tar` without a network) and let
   the desktop run 10 minutes.
 - **Screen dark or touch dead after the reboot.** Hold Power until the tablet
