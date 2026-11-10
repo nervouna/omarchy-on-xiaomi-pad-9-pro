@@ -12,7 +12,8 @@ PAT="$PAT|Confidential and Proprietary"
 fail=0
 for f in $(git ls-files --cached); do
     [ -f "$f" ] || continue
-    case "$f" in tools/check-public.sh) continue ;; esac
+    # allowed_signers holds the public half of the update signing key (meant to be public).
+    case "$f" in tools/check-public.sh|rootfs-overlay/usr/share/loa/update/allowed_signers) continue ;; esac
     if hits=$(grep -anIiE "$PAT" "$f" | grep -viE '00:00:00:00:00:00|ff:ff:ff:ff:ff:ff|xx:xx|02:00:00:77:00:0[12]' | head -3) && [ -n "$hits" ]; then
         echo "== $f"; echo "$hits" | cut -c1-160; fail=1
     fi

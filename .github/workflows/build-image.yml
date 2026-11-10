@@ -57,7 +57,7 @@ jobs:
         run: |
           build=true
           if [ "$EVENT" = pull_request ]; then
-            if git diff --name-only "$BASE...$HEAD" | grep -qE '^(builder/|rootfs-overlay/|patches/|user-defaults/|tools/overlay-install\.sh$|\.github/workflows/build-image\.yml$)'; then
+            if git diff --name-only "$BASE...$HEAD" | grep -qE '^(builder/|rootfs-overlay/|patches/|user-defaults/|tools/(overlay-install|make-update-bundle)\.sh$|\.github/workflows/build-image\.yml$)'; then
               build=true
             else
               build=false
@@ -159,7 +159,27 @@ jobs:
           echo "image size: $size"
           [ "$size" = 17179869184 ]
           sudo e2fsck -fn "${img%.zst}"
-          rm "${img%.zst}"
+
+      # loa-update against the real root, in the decompressed scratch copy of
+      # the image (the uploaded .zst is not touched), with a throwaway key.
+      - name: Test loa-update in the built root
+        working-directory: ${{ runner.temp }}/out
+        run: |
+          set -euo pipefail
+          img=$(ls omarchy-scratch-*.img)
+          R=/mnt/loa-root; sudo mkdir -p "$R"
+          sudo mount -o loop "$img" "$R"
+          sudo mount -t proc proc "$R/proc"
+          sudo mount --rbind /sys "$R/sys";  sudo mount --make-rslave "$R/sys"
+          sudo mount --rbind /dev "$R/dev";  sudo mount --make-rslave "$R/dev"
+          sudo mount -t tmpfs -o mode=755 tmpfs "$R/run"
+          sudo mount -t tmpfs -o mode=1777 tmpfs "$R/tmp"
+          sudo cp -L /etc/resolv.conf "$R/etc/resolv.conf"
+          sudo mkdir "$R/tmp/loa-test"
+          git -C "$GITHUB_WORKSPACE" archive HEAD rootfs-overlay user-defaults tools builder | sudo tar -x -C "$R/tmp/loa-test"
+          sudo chroot "$R" /usr/bin/env -i HOME=/root TERM=xterm LANG=C.UTF-8 \
+            PATH=/usr/local/sbin:/usr/local/bin:/usr/bin \
+            sh /tmp/loa-test/builder/test-loa-update.sh /tmp/loa-test
 
       - name: Disk space at the end
         if: always()
@@ -187,7 +207,8 @@ jobs:
       - name: Unmount the chroot
         if: always()
         run: |
-          findmnt -rn -o TARGET | grep '^/var/tmp/alarm' | sort -r | while read -r m; do sudo umount -l "$m" || true; done
+          findmnt -rn -o TARGET | grep -E '^(/var/tmp/alarm|/mnt/loa-root)' | sort -r | while read -r m; do sudo umount -l "$m" || true; done
+          sudo rm -f "$RUNNER_TEMP"/out/omarchy-scratch-*.img
 
   # The one check branch protection requires. It passes when every job above
   # passed or was skipped (build is skipped for changes that cannot affect the

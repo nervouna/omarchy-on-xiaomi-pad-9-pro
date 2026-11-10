@@ -1,0 +1,22 @@
+[Unit]
+Description=LoA: roll back and reboot a boot of an update that has no desktop after 300 s
+# `loa-update boot-deadline` acts only when the marker is "tried" (set by this
+# boot's boot check) or "applying" (a rollback still to finish) and
+# /run/loa-boot-ok does not exist: it rolls back, resets the stage-1 boot
+# counter if the rollback completed, and reboots. Any other marker, or a boot
+# that reached loa-boot-ok, leaves everything as it is.
+# The 300 s are uptime (/proc/uptime counts time in suspend; sleep does not).
+# Then the same dispatcher as loa-update-rollback.service: the copy of
+# loa-update kept with the update's record, else the installed one, so an update
+# that ships a broken loa-update still has its deadline. Never change the
+# dispatcher in a release: the old unit runs on the first boot after an update.
+DefaultDependencies=no
+After=loa-update-rollback.service
+Before=shutdown.target
+Conflicts=shutdown.target
+ConditionPathExists=/var/lib/loa-update/pending
+[Service]
+Type=simple
+ExecStart=/bin/sh -c 't=$$(cut -d. -f1 /proc/uptime); until [ $$(( $$(cut -d. -f1 /proc/uptime) - t )) -ge 300 ]; do sleep 5; done; r=$$(cat /var/lib/loa-update/last 2>/dev/null); [ -x "$$r/loa-update" ] && exec "$$r/loa-update" boot-deadline; exec /usr/local/bin/loa-update boot-deadline'
+[Install]
+WantedBy=sysinit.target

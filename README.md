@@ -140,6 +140,8 @@ tools/repartition.sh 64 --apply         # optional: 64 GiB root instead of 17
 You need your own SSH key in `keys/` (the repo ships none) and the stock
 `init_boot` from the official ROM in `images/`.
 
+Away from the Mac, `sudo loa-update` on the tablet installs a signed release of these files over Wi-Fi ([docs/maintenance.md](docs/maintenance.md#over-the-air-updates-loa-update)).
+
 ## Going back to Android
 
 Android stays bootable on demand. To make it the default again, flash the stock

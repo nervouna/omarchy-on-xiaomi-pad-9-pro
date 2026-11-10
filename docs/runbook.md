@@ -151,6 +151,7 @@ activation. Leave Android at least 16–20 GiB: its OTAs stage into userdata.
 ## 7. Afterwards
 
 - Re-apply LoA files at any time: `tools/apply-overlay.sh`.
+- Away from the Mac: `sudo loa-update` installs a signed release of these files over Wi-Fi ([maintenance.md](maintenance.md), "Over-the-air updates").
 - Coding agents: `mise install` (Omarchy manages them with mise).
 - Updates: `omarchy update`, like any Omarchy install; what the tablet adds is in
   [maintenance.md](maintenance.md). A Hyprland that needs a newer Aquamarine stops
