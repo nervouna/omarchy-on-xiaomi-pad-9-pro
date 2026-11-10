@@ -98,6 +98,13 @@ same $F $W/repo/rootfs-overlay$F && [ -n "$BK" ] && same "$BK$F" $W/F.before ||
     fail "a changed overlay file is replaced and its backup exists"
 pass "a changed overlay file is replaced and its backup exists"
 boot_ok
+# loa-boot-ok on a boot without a marker: the counter is reset, the flag is
+# set, and no marker appears.
+mkdir -p /loa; echo 2 > /loa/boot-attempts; rm -f /run/loa-boot-ok
+eval "$okcmd" > /dev/null 2>&1
+[ "$(cat /loa/boot-attempts)" = 0 ] && [ -e /run/loa-boot-ok ] && [ ! -e $S/pending ] ||
+    fail "loa-boot-ok without a marker resets the counter, sets the flag and creates no marker"
+pass "loa-boot-ok without a marker resets the counter, sets the flag and creates no marker"
 
 # 2. Refusals, each bundle sound in every way but one (G: a good, newer bundle).
 bundle 29990101-5 $W/g $W/k1
@@ -139,12 +146,14 @@ bundle 29990101-2 $W/b2 $W/k1
 swap_key; lu --file $W/b2/loa-update.tar || fail "applying the bundle for the automatic rollback"
 [ "$(marker)" = applied ] || fail "an update leaves the marker 'applied'"
 refuse "a second update before the first has booted is refused" "not been confirmed" --file $W/g/loa-update.tar
+refuse "a second update is refused with --force too" "not been confirmed" --force --file $W/g/loa-update.tar
 eval "$okcmd" > /dev/null 2>&1
 [ "$(marker)" = applied ] || fail "loa-boot-ok leaves an update that has not booted yet alone"
 lu boot-check && [ "$(marker)" = applied ] || fail "the boot check in the boot that applied an update leaves it 'applied'"
 pass "the boot check in the boot that applied an update leaves it 'applied'"
 later_boot
 lu boot-check && [ "$(marker)" = tried ] && same $F $W/repo/rootfs-overlay$F || fail "the first boot after an update marks it 'tried'"
+refuse "a second update while the first boot of an update is 'tried' is refused" "not been confirmed" --file $W/g/loa-update.tar
 lu boot-check || fail "the automatic rollback runs"
 same $F $W/F.before && [ ! -e $N ] && [ ! -e $S/pending ] && [ ! -e $S/pending-boot ] && [ ! -e $S/version ] ||
     fail "the automatic rollback restores when the marker says a boot failed"
@@ -170,6 +179,7 @@ lu confirm && fail "confirm accepts an update that has not booted"
 [ "$(marker)" = applied ] || fail "a refused confirm leaves the marker 'applied'"
 later_boot; lu boot-check && eval "$okcmd" > /dev/null 2>&1
 [ "$(marker)" = booted ] || fail "loa-boot-ok marks a tried update 'booted'"
+refuse "a second update while an update is 'booted' (on trial) is refused" "not been confirmed" --file $W/g/loa-update.tar
 lu boot-check && same $F $W/F.before && [ ! -e $S/pending ] && [ "$(last_rollback)" = "29990101-3 booted" ] ||
     fail "a boot that finds 'booted' rolls the update back"
 pass "an update whose boot ended within its 10 minutes is rolled back at the next boot"
@@ -189,7 +199,8 @@ mkpkg() {  # VERSION OUT PROVIDES...
     { echo "pkgname = aquamarine"; echo "pkgbase = aquamarine"; echo "pkgver = $ver"
       echo "pkgdesc = loa-update test package"; echo "arch = aarch64"; echo "size = 5"
       for p in "$@"; do echo "provides = $p"; done; } > $d/.PKGINFO
-    (cd $d && bsdtar --zstd --uid 0 --gid 0 -cf "$out" .PKGINFO usr) || fail "building $out"
+    # shellcheck disable=SC2046
+    (cd $d && bsdtar --zstd --uid 0 --gid 0 -cf "$out" .PKGINFO $(ls -A | grep -x .INSTALL) usr) || fail "building $out"
 }
 # Every path of the installed Aquamarine: type, mode, owner, and the content
 # hash of a file or the target of a symlink.
@@ -288,6 +299,14 @@ deadline && [ "$(marker)" = tried ] && same $F $W/repo/rootfs-overlay$F && [ ! -
     [ "$(cat /loa/boot-attempts)" = 2 ] || fail "the deadline leaves a boot alone that reached loa-boot-ok"
 pass "the deadline leaves an update alone when the boot reached loa-boot-ok or the marker is not 'tried'"
 rm -f /run/loa-boot-ok
+# A rollback that fails (its record is missing): the deadline still reboots
+# and leaves the stage-1 counter as it was.
+r=$(cat $S/last); mv "$r" "$r.x"
+deadline
+grep -qx -e '--no-block reboot' $W/systemctl.log && [ "$(cat /loa/boot-attempts)" = 2 ] && [ "$(marker)" = tried ] ||
+    fail "a failed rollback at the deadline still reboots and leaves the counter"
+mv "$r.x" "$r"; rm -f $W/systemctl.log
+pass "a failed rollback at the deadline still reboots and leaves the boot counter as it was"
 deadline
 same $F $W/F.before5 && [ ! -e $N ] && [ ! -e $S/pending ] && [ ! -e $S/pending-boot ] && [ "$(cat /loa/boot-attempts)" = 0 ] &&
     grep -qx -e '--no-block reboot' $W/systemctl.log && [ "$(last_rollback)" = "29990101-11 deadline" ] ||
@@ -317,6 +336,133 @@ eval "$run" > $W/out 2>&1 || fail "the unit's boot check rolls back"
 same $F $W/F.before6 && [ ! -e $N ] && [ ! -e $S/pending ] && same $LU $W/lu.before ||
     fail "the boot check runs the loa-update that wrote the record and restores the installed one"
 pass "the boot check runs the loa-update kept with the record, so an update with a broken loa-update is rolled back"
+# The next bundles carry the good loa-update again.
+cp "$SRC/rootfs-overlay$LU" $W/repo/rootfs-overlay$LU; install_script good
+
+# 11. The deadline and confirm units wait on uptime (/proc/uptime counts time
+# in suspend, sleep does not), and the deadline goes through the same
+# dispatcher as the boot check. Each wait loop runs with $$ as $, its limit
+# replaced by 2 and a sleep that returns at once, so only the uptime ends it.
+PINNED_DL=$(cat <<'EOF'
+/bin/sh -c 't=$$(cut -d. -f1 /proc/uptime); until [ $$(( $$(cut -d. -f1 /proc/uptime) - t )) -ge 300 ]; do sleep 5; done; r=$$(cat /var/lib/loa-update/last 2>/dev/null); [ -x "$$r/loa-update" ] && exec "$$r/loa-update" boot-deadline; exec /usr/local/bin/loa-update boot-deadline'
+EOF
+)
+dl=$(sed -n 's/^ExecStart=//p' $U/loa-update-deadline.service)
+[ "$dl" = "$PINNED_DL" ] || { echo "$dl" > $W/out; fail "the ExecStart of loa-update-deadline.service is the pinned text"; }
+pass "the deadline unit runs the loa-update kept with the record, through the pinned dispatcher"
+cf=$(sed -n 's/^ExecStart=//p' $U/loa-update-confirm.service)
+mkdir -p $W/nosleep; printf '#!/bin/sh\nexit 0\n' > $W/nosleep/sleep; chmod 755 $W/nosleep/sleep
+waitloop() {  # EXECSTART LIMIT
+    loop=$(printf '%s\n' "$1" | sed -e 's/\$\$/$/g' -e "s/ -ge $2 ]/ -ge 2 ]/" -e "s|^/bin/sh -c '||" -e 's/; done;.*/; done/')
+    case "$loop" in 't=$(cut -d. -f1 /proc/uptime); until '*' -ge 2 ]; do sleep 5; done') ;; *) echo "$loop" > $W/out; return 1 ;; esac
+    t0=$(cut -d. -f1 /proc/uptime)
+    PATH=$W/nosleep:$PATH timeout 30 sh -c "$loop" > $W/out 2>&1 && [ $(($(cut -d. -f1 /proc/uptime) - t0)) -ge 2 ]
+}
+waitloop "$dl" 300 || fail "the deadline unit waits 300 s of /proc/uptime"
+waitloop "$cf" 600 || fail "the confirm unit waits 600 s of /proc/uptime"
+pass "the deadline and confirm units wait on /proc/uptime, which counts time in suspend"
+
+# 12. An apply killed inside its Aquamarine step: a test package whose
+# post_upgrade kills the process group, after pacman wrote its database and
+# while it holds its lock; under setsid -w as in 6. The record and the marker
+# are on disk before pacman runs, so one boot check removes the stale lock and
+# reinstalls the previous Aquamarine.
+command -v pgrep > /dev/null || fail "pgrep is installed (a rollback removes pacman's lock only when no pacman runs)"
+[ "$(pacman -Q aquamarine | cut -d' ' -f2)" = "$cur" ] || fail "Aquamarine $cur is installed before the Aquamarine kill case"
+mkdir -p $W/pkg-$cur.3; printf 'post_install() { kill -KILL 0; }\npost_upgrade() { kill -KILL 0; }\n' > $W/pkg-$cur.3/.INSTALL
+# shellcheck disable=SC2086
+mkpkg "$cur.3" $W/aquamarine-$cur.3-aarch64.pkg.tar.zst $provides
+bundle 29990102-1 $W/c1 $W/k1 --aquamarine $W/aquamarine-$cur.3-aarch64.pkg.tar.zst
+vb=$(cat $S/version 2>/dev/null)
+swap_key
+setsid -w "$LU" --file $W/c1/loa-update.tar > $W/out 2>&1 && fail "the apply killed in its Aquamarine step exits 0"
+[ "$(marker)" = applying ] && [ "$(pacman -Q aquamarine | cut -d' ' -f2)" = "$cur.3" ] && [ -e /var/lib/pacman/db.lck ] ||
+    fail "the apply was killed inside its Aquamarine step (marker 'applying', Aquamarine $cur.3 installed, pacman's lock left)"
+lu boot-check || fail "the boot check after an apply killed in its Aquamarine step runs"
+[ "$(pacman -Q aquamarine | cut -d' ' -f2)" = "$cur" ] && pacman -Qk aquamarine > /dev/null 2>&1 && [ ! -e $S/pending ] &&
+    [ ! -e /var/lib/pacman/db.lck ] && [ "$(cat $S/version 2>/dev/null)" = "$vb" ] ||
+    fail "one boot check after an apply killed in its Aquamarine step reinstalls the previous Aquamarine"
+snap > $W/aq.after2
+same $W/aq.before $W/aq.after2 || { diff $W/aq.before $W/aq.after2 > $W/out; fail "the previous Aquamarine is back as it was after the Aquamarine kill case"; }
+pass "an apply killed in its Aquamarine step is rolled back by one boot check, the previous Aquamarine as it was"
+
+# 13. A rollback with a stale pacman lock and no pacman running.
+bundle 29990102-2 $W/c2 $W/k1 --aquamarine $W/aquamarine-$cur.1-aarch64.pkg.tar.zst
+swap_key; lu --file $W/c2/loa-update.tar && [ "$(pacman -Q aquamarine | cut -d' ' -f2)" = "$cur.1" ] ||
+    fail "applying the Aquamarine bundle for the stale lock"
+touch /var/lib/pacman/db.lck
+lu rollback && [ ! -e /var/lib/pacman/db.lck ] && [ "$(pacman -Q aquamarine | cut -d' ' -f2)" = "$cur" ] && [ ! -e $S/pending ] ||
+    fail "a rollback with a stale pacman lock and no pacman running succeeds and removes the lock"
+pass "a rollback with a stale pacman lock and no pacman running succeeds and removes the lock"
+
+# 14. A rollback whose Aquamarine step fails (a pacman in PATH that refuses -U,
+# for that boot check only), from 'tried' and from 'booted': the marker is
+# 'applying', which loa-boot-ok does not promote and confirm refuses, `check`
+# shows it, and the next boot check completes the rollback.
+mkdir -p $W/nopacman
+printf '#!/bin/sh\ncase " $* " in *" -U "*) echo "pacman -U refused by the test" >&2; exit 1 ;; esac\nexec /usr/bin/pacman "$@"\n' > $W/nopacman/pacman
+chmod 755 $W/nopacman/pacman
+echo "-- changed for the failing rollback" >> $F; cp -a $F $W/F.c2
+for m in tried booted; do
+    swap_key; lu --file $W/c2/loa-update.tar || fail "applying the bundle for a failing rollback from '$m'"
+    later_boot; lu boot-check || fail "the boot check marks the update 'tried' ($m)"
+    [ $m = booted ] && eval "$okcmd" > /dev/null 2>&1
+    [ "$(marker)" = $m ] || fail "the marker is '$m' before the failing rollback"
+    PATH=$W/nopacman:$PATH "$LU" boot-check > $W/out 2>&1 && fail "a boot check whose rollback cannot reinstall Aquamarine exits 0 ($m)"
+    [ "$(marker)" = applying ] && [ -s $S/last ] && [ "$(pacman -Q aquamarine | cut -d' ' -f2)" = "$cur.1" ] ||
+        fail "a rollback whose Aquamarine step fails leaves the marker 'applying' and the record ($m)"
+    eval "$okcmd" > /dev/null 2>&1
+    [ "$(marker)" = applying ] || fail "loa-boot-ok does not promote a failed rollback ($m)"
+    lu confirm && fail "confirm accepts a failed rollback ($m)"
+    [ "$(marker)" = applying ] || fail "a refused confirm leaves a failed rollback 'applying' ($m)"
+    swap_key; lu check --file $S/cache/loa-update.tar
+    grep -q "rollback of 29990102-2 ($m) did not complete: reinstalling the previous Aquamarine" $W/out ||
+        fail "check shows the failed rollback ($m)"
+    lu boot-check && [ ! -e $S/pending ] && [ "$(pacman -Q aquamarine | cut -d' ' -f2)" = "$cur" ] && same $F $W/F.c2 ||
+        fail "the next boot check completes a rollback whose Aquamarine step failed ($m)"
+done
+pass "a rollback whose Aquamarine step fails stays 'applying': loa-boot-ok does not promote it, confirm refuses it, check shows it, the next boot check retries it"
+
+# 15. confirm waits while another loa-update holds the lock.
+bundle 29990102-3 $W/c3 $W/k1
+swap_key; lu --file $W/c3/loa-update.tar || fail "applying the bundle for confirm under the lock"
+later_boot; lu boot-check && eval "$okcmd" > /dev/null 2>&1 && [ "$(marker)" = booted ] || fail "the update for confirm under the lock is 'booted'"
+flock $S/cache/.lock sleep 5 & holder=$!
+i=0; while flock -n $S/cache/.lock true; do i=$((i + 1)); [ $i -lt 50 ] || fail "the test takes loa-update's lock"; sleep 0.1; done
+lu confirm; rc=$?; wait $holder
+[ $rc = 0 ] && [ ! -e $S/pending ] || fail "confirm waits for another loa-update's lock and then keeps the update"
+pass "confirm waits while another loa-update holds the lock, then keeps the update"
+
+# 16. A marker that names no state (an empty write).
+echo "-- changed for the empty marker" >> $F; cp -a $F $W/F.c4
+bundle 29990102-4 $W/c4 $W/k1
+swap_key; lu --file $W/c4/loa-update.tar || fail "applying the bundle for the empty marker"
+: > $S/pending
+lu boot-check && [ ! -e $S/pending ] && same $F $W/F.c4 && [ "$(cat $S/version)" = 29990102-3 ] &&
+    [ "$(last_rollback)" = "29990102-4 applying" ] || fail "an empty marker with a record in last is rolled back by the boot check"
+pass "an empty marker with a record in last is rolled back by the boot check"
+: > $S/pending
+lu boot-check && [ ! -e $S/pending ] && [ "$(cat $S/version)" = 29990102-3 ] || fail "an empty marker with no record is removed by the boot check"
+pass "an empty marker with no record is removed by the boot check"
+
+# 17. A restore whose copy fails (a backed-up file whose target directory is a
+# file): non-zero exit, marker, record and version kept; then it completes.
+echo "-- changed for the failing restore" >> $F; cp -a $F $W/F.c5
+bundle 29990102-5 $W/c5 $W/k1
+swap_key; lu --file $W/c5/loa-update.tar || fail "applying the bundle for the failing restore"
+R=$(cat $S/last); BK=$(cat $R/backup)
+[ -d "$BK" ] || fail "the update for the failing restore has a backup"
+mkdir -p "$BK/tmp/loa-restore/d"; echo restore > "$BK/tmp/loa-restore/d/file"
+mkdir -p /tmp/loa-restore; echo "a file, not a directory" > /tmp/loa-restore/d
+lu rollback && fail "a rollback whose copy fails exits 0"
+[ "$(marker)" = applying ] && [ "$(cat $S/last)" = "$R" ] && [ -d "$R" ] && [ "$(cat $S/version)" = 29990102-5 ] &&
+    grep -q /tmp/loa-restore/d/file "$R/rollback-error" || fail "a rollback whose copy fails keeps the marker 'applying', the record and the version"
+pass "a rollback whose copy fails ends non-zero and keeps the marker 'applying', the record and the version"
+rm -f /tmp/loa-restore/d
+lu boot-check && [ ! -e $S/pending ] && same $F $W/F.c5 && [ "$(cat /tmp/loa-restore/d/file)" = restore ] &&
+    [ "$(cat $S/version)" = 29990102-3 ] || fail "the next boot check completes a rollback whose copy failed"
+pass "the next boot check completes a rollback whose copy failed"
+rm -r /tmp/loa-restore
 
 rm -rf $W
 echo "loa-update tests: all $n passed"

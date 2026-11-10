@@ -18,13 +18,19 @@
 # loa-update that wrote it), last-rollback (time, version, trigger),
 # aquamarine/ (package files kept for rollback or held back), cache/, and the
 # boot marker `pending`:
-#   applying  the install script has not finished: roll back at the next check
+#   applying  the install (Aquamarine or the install script) or a rollback has
+#             not finished: roll back at the next boot check or apply, or 300 s
+#             into a boot without loa-boot-ok (deadline). A rollback writes it
+#             first and the record keeps rolling-back (its trigger) and
+#             rollback-error until one completes.
 #   applied   installed (pending-boot: the boot that did it), not booted yet
 #   tried     a later boot started (boot check); rolled back if found again, or
 #             300 s into that boot without loa-boot-ok (deadline)
 #   booted    loa-boot-ok: on probation; rolled back if found at a boot
-#   (absent)  confirmed (loa-update confirm, 10 minutes after loa-boot-ok), or
-#             rolled back, or nothing applied
+#   (other)   an unreadable write: rolled back like applying if `last` names a
+#             record, else removed
+#   (absent)  confirmed (loa-update confirm, 10 minutes of uptime after
+#             loa-boot-ok), or rolled back, or nothing applied
 set -u
 REPO=nervouna/omarchy-on-xiaomi-pad-9-pro
 S=/var/lib/loa-update
@@ -63,7 +69,7 @@ fetch() {
         if [ -n "$TAG" ]; then U=https://github.com/$REPO/releases/download/$TAG
         else U=https://github.com/$REPO/releases/latest/download; fi
         for f in loa-update.tar loa-update.tar.sig; do
-            curl -fsSL --retry 3 --connect-timeout 20 -o "$C/$f.part" "$U/$f" || die "download failed: $U/$f"
+            curl -fsSL --retry 3 --connect-timeout 20 --max-time 120 -o "$C/$f.part" "$U/$f" || die "download failed: $U/$f"
         done
     fi
     mv $C/loa-update.tar.part $C/loa-update.tar && mv $C/loa-update.tar.sig.part $C/loa-update.tar.sig ||
@@ -155,27 +161,36 @@ apply() {
     done > "$R/new"
     sed -n 's/^f //p' "$R/new" > "$R/added"; sed -n 's/^d //p' "$R/new" > "$R/added-dirs"; rm -f "$R/new"
 
-    # 1. Aquamarine.
     case $AQ_ACTION in
         install)
             prev=$S/aquamarine/aquamarine-$AQ_CUR-aarch64.pkg.tar.zst
             [ -s "$prev" ] || repack aquamarine "$AQ_CUR" "$prev" ||
                 { rm -rf "$R"; die "cannot keep a package of the installed Aquamarine $AQ_CUR for rollback; nothing was changed"; }
-            echo "$prev" > "$R/aquamarine-prev"
-            say "$AQ_WHY (the previous package is kept as $prev)"
-            LOA_AQUAMARINE=1 pacman -U --noconfirm "$AQ_PKG" ||
-                { rm -rf "$R"; die "installing Aquamarine $AQ_NEW failed; nothing else was changed"; } ;;
+            echo "$prev" > "$R/aquamarine-prev" ;;
         same|hold)
             cp "$AQ_PKG" $S/aquamarine/; kept=$S/aquamarine/$(basename "$AQ_PKG")
             if [ $AQ_ACTION = same ]; then say "$AQ_WHY"
             else say "not installing Aquamarine: $AQ_WHY. Kept as $kept; install it together with a Hyprland that needs it (docs/maintenance.md, \"Over-the-air updates\")"; fi ;;
     esac
-    # The backup directory the install script will use, the added files and the
-    # marker are on disk before it replaces anything: a rollback after a power
-    # loss or a kill mid-install works from them.
+    # The record (the Aquamarine package to go back to, the backup directory the
+    # install script will use, the added files) and the marker are on disk before
+    # anything of the system is replaced: a rollback after a power loss or a kill
+    # in either step works from them.
     BKD=$BACKUPS/$(date +%Y%m%d-%H%M%S)-loa-update-$NEW
     echo "$BKD" > "$R/backup"
-    echo "$R" > $S/last; echo applying > $S/pending; sync
+    echo "$R" > $S/last && echo applying > $S/pending ||
+        { rm -f $S/last $S/pending; rm -rf "$R"; die "cannot write the update marker; nothing was changed"; }
+    sync
+
+    # 1. Aquamarine. A failure here is rolled back like a failed install script.
+    if [ $AQ_ACTION = install ]; then
+        say "$AQ_WHY (the previous package is kept as $prev)"
+        if ! LOA_AQUAMARINE=1 pacman -U --noconfirm "$AQ_PKG"; then
+            say "installing Aquamarine $AQ_NEW failed: rolling back"
+            ( rollback install-failed ) && die "installing Aquamarine $AQ_NEW failed; rolled back"
+            die "installing Aquamarine $AQ_NEW failed and so did the rollback (loa-update check); run: loa-update rollback"
+        fi
+    fi
 
     # 2. The overlay, through the bundle's own copy of the wired install script.
     ls $BACKUPS 2>/dev/null > $C/backups-before
@@ -191,13 +206,13 @@ apply() {
     if [ "$rc" != 0 ]; then
         say "the install script failed (exit ${rc:-?}): rolling back what it did"
         ( rollback install-failed ) && die "the install script failed (exit ${rc:-?}); everything it did was rolled back (log: $R.rolled-back/install.log)"
-        die "the install script failed (exit ${rc:-?}) and so did the rollback; run: loa-update rollback"
+        die "the install script failed (exit ${rc:-?}) and so did the rollback (loa-update check); run: loa-update rollback"
     fi
     echo "$NEW" > $S/version; rm -f $S/last-rollback
     cat /proc/sys/kernel/random/boot_id > $S/pending-boot; echo applied > $S/pending; sync
     say "installed $NEW (was ${CUR:-not recorded}). Reboot to use it."
-    say "That boot is a trial: the update is kept once the desktop has run for 10 minutes (or after: sudo loa-update confirm)."
-    say "It is rolled back by itself if the tablet reboots or powers off before then, or if the desktop is not up 5 minutes into the boot."
+    say "That boot is a trial: the update is kept 10 minutes after the desktop came up, time asleep included (or after: sudo loa-update confirm)."
+    say "It is rolled back by itself if the tablet reboots or powers off before then, or if the desktop is not up 5 minutes into the boot (asleep included)."
     say "Screen dark or touch dead after the reboot: hold Power until the tablet restarts, within the 10 minutes; that boot rolls the update back."
 }
 
@@ -211,11 +226,18 @@ rollback() {
         export LOA_UPDATE_LOCKED=1 LOA_ROLLBACK_TRIGGER="$1"
         exec "$R/loa-update" rollback
     fi
+    # Until this rollback completes, the marker is "applying": loa-boot-ok does
+    # not promote it, confirm refuses it, and every boot check and the next
+    # apply run the rollback again. The record says a rollback started.
+    echo "$1" > "$R/rolling-back" && echo applying > $S/pending ||
+        die "cannot write the update marker; nothing was rolled back"
+    rm -f "$R/rollback-error" "$R/restore-failed"; sync
     BK=$(cat "$R/backup" 2>/dev/null)
     if [ -n "$BK" ] && [ -d "$BK" ]; then
         # File by file: the backup's directories are not the originals' (owner, mode).
         (cd "$BK" && find . \( -type f -o -type l \) | sed 's|^\.||') | while IFS= read -r f; do
-            mkdir -p "$(dirname "$f")"; rm -f "$f"; cp -a "$BK$f" "$f" && echo "restored $f"
+            mkdir -p "$(dirname "$f")"; rm -f "$f"
+            if cp -a "$BK$f" "$f"; then echo "restored $f"; else echo "$f" >> "$R/restore-failed"; fi
         done
     fi
     while IFS= read -r f; do
@@ -225,17 +247,38 @@ rollback() {
     LC_ALL=C sort -r "$R/added-dirs" | while IFS= read -r d; do rmdir "$d" 2>/dev/null; done
     prev=$(cat "$R/aquamarine-prev" 2>/dev/null)
     if [ -n "$prev" ]; then
-        LOA_AQUAMARINE=1 pacman -U --noconfirm "$prev" || die "reinstalling the previous Aquamarine ($prev) failed; run: LOA_AQUAMARINE=1 pacman -U $prev"
+        # A pacman killed by a reset leaves its lock behind; remove it only when no pacman runs.
+        pgrep -x pacman > /dev/null || rm -f /var/lib/pacman/db.lck
+        LOA_AQUAMARINE=1 pacman -U --noconfirm "$prev" ||
+            rollback_failed "reinstalling the previous Aquamarine ($prev) failed"
     fi
+    [ ! -s "$R/restore-failed" ] || rollback_failed "could not restore: $(tr '\n' ' ' < "$R/restore-failed")"
     pv=$(cat "$R/prev-version" 2>/dev/null)
     if [ -n "$pv" ]; then echo "$pv" > $S/version; else rm -f $S/version; fi
     echo "$(date +%Y-%m-%dT%H:%M:%S) $(cat "$R/version") $1" > $S/last-rollback
-    rm -f $S/last $S/pending $S/pending-boot; mv "$R" "$R.rolled-back"; sync
+    rm -f $S/last $S/pending $S/pending-boot "$R/rolling-back"; mv "$R" "$R.rolled-back"; sync
     systemctl daemon-reload >/dev/null 2>&1 || true
     say "rolled back $(cat "$R.rolled-back/version") ($1); installed version now ${pv:-not recorded}"
 }
 
+# A rollback that cannot complete: the marker stays "applying", the record
+# keeps the reason for `check`, and the exit is non-zero.
+rollback_failed() {
+    echo "$*" > "$R/rollback-error"; sync
+    die "$*; the rollback is not complete and is retried at the next boot (or run: loa-update rollback)"
+}
+
 pending_version() { cat "$(cat $S/last 2>/dev/null)/version" 2>/dev/null; }
+# A marker that names no state (an empty or cut-off write): roll back if an
+# update is recorded, else remove it.
+odd_marker() {
+    if [ -s $S/last ]; then
+        say "the update marker reads '$(cat $S/pending 2>/dev/null)': rolling back update $(pending_version)"
+        rollback applying
+    else
+        rm -f $S/pending $S/pending-boot; sync
+    fi
+}
 
 # At boot, before the early units (loa-update-rollback.service, through the
 # record's copy of loa-update). See the marker states at the top.
@@ -250,16 +293,20 @@ boot_check() {
                rollback tried ;;
         booted) say "the boot after update $(installed) ended within its 10 minutes on the desktop: rolling it back"
                 rollback booted ;;
+        *) [ -e $S/pending ] && odd_marker ;;
     esac
+    return 0
 }
 
-# loa-update-deadline.service, 300 s into a boot: a boot that tries an update
-# and has not reached loa-boot-ok rolls it back and reboots (also when the
-# rollback fails: the next boot check tries again, stage 1 counts the boots).
+# loa-update-deadline.service, 300 s of uptime into a boot: a boot that tries an
+# update (or still has a rollback to finish) and has not reached loa-boot-ok
+# rolls it back and reboots. Also when the rollback fails: the next boot check
+# tries again, and stage 1 counts the boots (the counter is reset only after a
+# completed rollback).
 boot_deadline() {
     [ -e /run/loa-boot-ok ] && return 0
-    [ "$(cat $S/pending 2>/dev/null)" = tried ] || return 0
-    say "update $(installed) has not reached loa-boot-ok 300 s into its boot: rolling it back and rebooting"
+    case "$(cat $S/pending 2>/dev/null)" in tried|applying) ;; *) return 0 ;; esac
+    say "update $(pending_version) has not reached loa-boot-ok 300 s into its boot: rolling it back and rebooting"
     if ( rollback deadline ); then mkdir -p /loa; echo 0 > /loa/boot-attempts; fi
     sync; systemctl --no-block reboot
 }
@@ -276,7 +323,14 @@ confirm() {
 state() {
     v=$(pending_version)
     case "$(cat $S/pending 2>/dev/null)" in
-        applying) say "update state: the install of $v was interrupted; the next boot or loa-update rolls it back" ;;
+        applying)
+            r=$(cat $S/last 2>/dev/null)
+            if [ -e "$r/rolling-back" ]; then
+                say "update state: the rollback of $v ($(cat "$r/rolling-back")) did not complete: $(cat "$r/rollback-error" 2>/dev/null || echo interrupted)"
+                say "  the next boot, sudo loa-update rollback, or sudo loa-update retries it; until then $v is neither kept nor undone"
+            else
+                say "update state: the install of $v was interrupted; the next boot or loa-update rolls it back"
+            fi ;;
         applied) say "update state: $v installed, not booted yet (reboot to use it)" ;;
         tried) say "update state: $v booting, not at the desktop yet" ;;
         booted) say "update state: $v on trial: kept after 10 minutes on the desktop (or: sudo loa-update confirm)" ;;
@@ -307,7 +361,13 @@ if [ -n "${LOA_UPDATE_LOCKED:-}" ]; then  # a rollback handed over by another lo
     flock -n 9 2>/dev/null || die "LOA_UPDATE_LOCKED is set, but fd 9 is not the lock"
 else
     exec 9>>$C/.lock
-    flock -n 9 || die "another loa-update is running"
+    # The automatic confirm waits for a running check or --diff (a download is
+    # bounded by curl --max-time); the deadline waits up to 300 s.
+    case $CMD in
+        confirm) flock 9 ;;
+        boot-deadline) flock -w 300 9 ;;
+        *) flock -n 9 ;;
+    esac || die "another loa-update is running"
 fi
 
 case $CMD in
@@ -343,6 +403,7 @@ case $CMD in
                       ( rollback applying ) || die "rolling back the interrupted update failed; nothing else was changed" ;;
             applied) die "update $(pending_version) has not been confirmed by a boot: reboot and keep the desktop 10 minutes, or undo it with: loa-update rollback" ;;
             tried|booted) die "update $(pending_version) has not been confirmed by a boot: keep the desktop 10 minutes (or run: loa-update confirm), or undo it with: loa-update rollback" ;;
+            *) [ ! -e $S/pending ] || ( odd_marker ) || die "rolling back the update failed; nothing else was changed" ;;
         esac
         fetch; verify; gate; apply ;;
 esac

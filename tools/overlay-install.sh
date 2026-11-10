@@ -12,7 +12,13 @@ rm -f /run/loa-overlay.tar
 # loa-update names the backup directory itself (LOA_OVERLAY_BACKUP), recorded
 # before anything is replaced; otherwise it is the time.
 BK=${LOA_OVERLAY_BACKUP:-/var/backups/loa-overlay/$(date +%Y%m%d-%H%M%S)}
-backup() { [ -e "$1" ] || [ -L "$1" ] || return 0; mkdir -p "$BK$(dirname "$1")"; cp -a "$1" "$BK$1"; }
+# Under loa-update, each backup is on disk before its original is replaced: a
+# rollback after a crash mid-install must not copy back an empty file.
+backup() {
+    [ -e "$1" ] || [ -L "$1" ] || return 0
+    mkdir -p "$BK$(dirname "$1")"; cp -a "$1" "$BK$1"
+    [ -z "${LOA_OVERLAY_BACKUP:-}" ] || sync
+}
 U="setpriv --reuid=1000 --regid=1000 --init-groups"
 n=0
 
