@@ -150,7 +150,7 @@ pass "a bundled Aquamarine whose libaquamarine.so Hyprland does not use is kept,
 echo "-- changed again by the test" >> $F; cp -a $F $W/F.before2; rm -f $N
 vbefore=$(cat $S/version)
 (cd $W/repo && sed -i 's/echo "updated \$f"$/echo "updated $f"; [ $n = 2 ] \&\& kill -KILL 0/' tools/overlay-install.sh &&
-    grep -q 'kill -KILL 0' tools/overlay-install.sh && git commit -qam interrupt) > $W/out 2>&1 || fail "building the interrupting install script"
+    grep -q 'kill -KILL 0' tools/overlay-install.sh && git -c user.name=test -c user.email=test@invalid commit -qam interrupt) > $W/out 2>&1 || fail "building the interrupting install script"
 bundle 29990101-7 $W/b7 $W/k1
 swap_key
 setsid -w "$LU" --file $W/b7/loa-update.tar > $W/out 2>&1 && fail "the interrupted install exits 0"
