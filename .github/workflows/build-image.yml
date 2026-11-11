@@ -34,7 +34,7 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
-      - run: command -v shellcheck >/dev/null || sudo apt-get install -y --no-install-recommends shellcheck
+      - run: command -v shellcheck >/dev/null || sudo apt-get install -y --no-install-recommends shellcheck || { sleep 30; sudo apt-get install -y --no-install-recommends shellcheck; }
       - run: tools/lint.sh
       - run: tools/test-check-update-tag.sh
 
@@ -82,15 +82,17 @@ jobs:
       - name: Bootstrap Arch Linux ARM
         run: |
           set -euo pipefail
-          sudo apt-get install -y --no-install-recommends libarchive-tools
+          # Runner networking drops out now and then (DNS, mirrors): retry.
+          retry() { n=1; until "$@"; do [ $n -ge 5 ] && return 1; echo "retry $n: $*"; sleep $((n * 20)); n=$((n + 1)); done; }
+          retry sudo apt-get install -y --no-install-recommends libarchive-tools
           t=$RUNNER_TEMP/alarm; mkdir -p "$t"; cd "$t"
           base=http://os.archlinuxarm.org/os
-          curl -fsSL --retry 5 -O "$base/ArchLinuxARM-aarch64-latest.tar.gz" \
+          curl -fsSL --retry 5 --retry-all-errors -O "$base/ArchLinuxARM-aarch64-latest.tar.gz" \
                   -O "$base/ArchLinuxARM-aarch64-latest.tar.gz.sig"
           export GNUPGHOME=$t/gnupg; install -d -m 700 "$GNUPGHOME"
-          for ks in keyserver.ubuntu.com keys.openpgp.org; do
-            gpg --batch --keyserver "hkps://$ks" --recv-keys "$ALARM_KEY_FPR" && break
-          done
+          # The key comes from the repository, not a keyserver; the pinned
+          # fingerprint below is what decides whether the tarball is trusted.
+          gpg --batch --import "$GITHUB_WORKSPACE/builder/archlinuxarm-keyring.gpg"
           gpg --batch --with-colons --fingerprint "$ALARM_KEY_FPR" | grep -q "^fpr:::::::::$ALARM_KEY_FPR:"
           gpg --batch --status-fd 1 --verify ArchLinuxARM-aarch64-latest.tar.gz.sig \
               ArchLinuxARM-aarch64-latest.tar.gz | tee verify.txt
@@ -121,7 +123,11 @@ jobs:
           sudo chroot "$R" /usr/bin/env -i HOME=/root PATH=/usr/bin bash -euxo pipefail -c '
             pacman-key --init
             pacman-key --populate archlinuxarm
-            pacman -Syu --noconfirm --needed git e2fsprogs zstd libarchive gnupg
+            n=1
+            until pacman -Syu --noconfirm --needed git e2fsprogs zstd libarchive gnupg; do
+              [ $n -ge 5 ] && exit 1
+              sleep $((n * 20)); n=$((n + 1))
+            done
           '
 
       - name: Build the root image

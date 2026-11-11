@@ -11,6 +11,7 @@
 
 - For anything you can't check remotely (touch, pen, display, keyboard cover), put a one- or two-line checklist in the PR or issue for the owner to try.
 - Before any change that touches the device, search for relevant history in `docs/`. Lots of gotchas, so be careful.
+- Reach the tablets with `tools/tssh` over the USB cable; the SSH key is in the git-ignored `keys/` directory.
 
 # Subagent models
 
