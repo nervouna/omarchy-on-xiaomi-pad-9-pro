@@ -366,3 +366,44 @@ Keep backups out of this repository: they hold secrets.
   (`/etc/default/earlyoom`) are the safety net. systemd-oomd can't work here:
   the bootloader sets `cgroup_disable=pressure`.
 - The journal is capped at 500 MB, because the keyboard driver logs every touchpad packet.
+
+## Prebuilt helper binaries
+
+Ten ELF binaries are tracked in git. `tools/check-helpers.sh` (the `helpers`
+job of `.github/workflows/build-image.yml`, part of the `ci` check) fails when
+a tracked ELF file is missing from this table or its sha256 differs, when
+busybox differs from the Ubuntu package binary (only warns when no mirror has
+the package any more), and, on a pull request, when a
+source and the binary built from it do not change together. The sha256 column is
+the file as committed.
+
+| Binary | Source | Toolchain | Build command | sha256 |
+|---|---|---|---|---|
+| `boot/busybox-static` | Ubuntu `busybox-static` 1:1.36.1-6ubuntu3.1 (arm64), BusyBox 1.36.1, unmodified | Ubuntu's own build | extract `usr/bin/busybox` from `http://ports.ubuntu.com/ubuntu-ports/pool/main/b/busybox/busybox-static_1.36.1-6ubuntu3.1_arm64.deb` (deb sha256 `d96535e0402c011e0ee43449799df2f4504d44b842e4f2b3a6cbc845508eaafc`); once the version is superseded the mirrors drop it: the package page is `https://launchpad.net/ubuntu/+source/busybox/1:1.36.1-6ubuntu3.1` (a direct download from there was not established) | `52151e7f322f926b64049cdaa1410dc3ea6485525e0624b05813791c219ae933` |
+| `rootfs-overlay/usr/lib/loa/busybox` | same file as `boot/busybox-static` | same | same | `52151e7f322f926b64049cdaa1410dc3ea6485525e0624b05813791c219ae933` |
+| `boot/initramfs/loa/loa-helper` | `boot/loa-helper.c` | zig cc, Homebrew build on macOS (`.comment`: Homebrew clang 21.1.8); zig version not recorded | `tools/build.sh c`: `zig cc -target aarch64-linux-musl -O2 -static -s` | `07530fc75241b0eced959a3e718e92436c5fdfc6595c024aeb6ff1c7bfc5d6b0` |
+| `rootfs-overlay/usr/lib/loa/loa-helper` | `boot/loa-helper.c`; `tools/build.sh` copies the boot one, but this file is a different build (30304 bytes against 35456) | same | same | `8e211fe07b0c93905b1f62c027bcd7e5cf04cd3298e8e28929c9f6abb44eba7a` |
+| `rootfs-overlay/usr/lib/loa/loa-splash-off` | `tools/src/splash-off/loa-splash-off.c` | same | `tools/build.sh c` | `badc53289d6d6885e85eff67fc78612b5ec4b956e3dd677f017adc820f07c3c8` |
+| `rootfs-overlay/usr/lib/loa/loa-xtouch` | `tools/src/xtouch/loa-xtouch.c` | same | `tools/build.sh c` | `c369465289589f3d209e278d47aa516ff609eb292f514b1e743626956a64dc9b` |
+| `rootfs-overlay/usr/lib/loa/loa-thp-launcher` | `tools/src/thp-launcher/loa-thp-launcher.c` | Android NDK clang 22.0.1 (`.comment`; based on r584948b), LLD 21.1.8, links Bionic `libdl`/`libc`; the NDK release and API level are not recorded | not in `tools/build.sh`; command not recorded (`aarch64-linux-androidNN-clang -O2 ... -ldl`) | `c0f6e000e5f5684649fc96cf57d76ba15a02458df6746d03bac8bca938efb9ac` |
+| `rootfs-overlay/opt/loa-android/loa/lib64/libloa_selinux_stub.so` | `tools/src/selinux-stub/libloa_selinux_stub.c` | Homebrew clang 21.1.8 and Homebrew LLD 21.1.8 (`.comment`), not the NDK that `tools/build.sh` names | `tools/build.sh ndk` line `aarch64-linux-android31-clang -O2 -fPIC -shared -nostdlib`, then `llvm-strip --strip-debug` | `2923d66035ab5a26d7c360c998758c20fd2c46f94dd27cc8c67313dd77ec8348` |
+| `rootfs-overlay/opt/loa-android/loa/bin/loa-bthci` | `tools/src/loa-bthci/loa-bthci.cpp` | Android NDK r28c (clang 19.0.1); links the tablet's `libbinder_ndk.so` | `tools/fetch-device-libs.sh`, then `tools/build.sh ndk` (`aarch64-linux-android31-clang++ -O2 -std=c++17 -static-libstdc++ ... -lbinder_ndk`) | `50420143585db418e4739a635d9ad4e2bbf8ba0616a13469428663647fe26f56` |
+| `rootfs-overlay/opt/loa-android/loa/bin/loa-pal` | `tools/src/loa-pal/loa-pal.cpp` | Android NDK r28c (clang 19.0.1); links the tablet's `libpalclient.so`, headers from CodeLinaro arpal-lx tag `lnx.2.0.r10-rel` | `tools/fetch-device-libs.sh`, then `tools/build.sh ndk` (`aarch64-linux-android35-clang++ -std=c++17 -O2 ... -lpalclient -Wl,--allow-shlib-undefined -static-libstdc++`) | `75b79baca4a4e217fffde0b3ea66a517ebcd3304df4d2c1d6fc606b7f9bc641b` |
+
+Why only busybox is checked by content: a rebuild on a GitHub runner did not
+reproduce any of the C helpers bit for bit. With official zig 0.14.1, 0.15.1,
+0.15.2, 0.16.0, 0.17.0 and 0.17.1 (aarch64 Linux tarballs, the flags above) no
+output matched, and the tracked files differ in layout, not only in metadata:
+`boot/initramfs/loa/loa-helper` is 35456 bytes with a 0x1cb0 byte `.text` and a
+`.tbss` section, where `boot/loa-helper.c` built today gives 37768 to 39424
+bytes with a 0x15a0 byte `.text` and no `.tbss`. The two `loa-helper` copies
+also differ from each other, so at least one was built from an older source. The
+tracked binaries may therefore predate the current sources. `libloa_selinux_stub.so`
+and `loa-thp-launcher` were not built with the NDK that `tools/build.sh` names
+(Homebrew clang 21.1.8 and an Android clang 22.0.1 build, newer than NDK r30's
+clang 21), and neither NDK r29 nor r30 reproduced them. The two NDK helpers that
+link vendor libraries stay prebuilt (their provenance is the row above).
+
+To replace a tracked binary, rebuild it with `tools/build.sh`, commit it in the
+same pull request as the source change, update its sha256 here, and test it on a
+tablet.
