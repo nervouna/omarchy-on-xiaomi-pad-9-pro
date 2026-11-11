@@ -1,0 +1,17 @@
+[Unit]
+Description=LoA: keep an over-the-air update once the desktop has run 10 minutes
+# loa-boot-ok turns the marker "tried" into "booted", and a boot check that
+# finds "booted" rolls the update back. Ten minutes on, with the desktop still
+# up, `loa-update confirm` deletes the marker (it waits for a running
+# loa-update). The 10 minutes are uptime (/proc/uptime counts time in suspend;
+# sleep does not), so a tablet that suspends confirms at its first wake after
+# them. No confirm at shutdown: a good update rebooted within its 10 minutes is
+# rolled back.
+Requires=loa-boot-ok.service
+After=loa-boot-ok.service
+ConditionPathExists=/var/lib/loa-update/pending
+[Service]
+Type=simple
+ExecStart=/bin/sh -c 't=$$(cut -d. -f1 /proc/uptime); until [ $$(( $$(cut -d. -f1 /proc/uptime) - t )) -ge 600 ]; do sleep 5; done; systemctl is-active --quiet loa-desktop.service && exec /usr/local/bin/loa-update confirm'
+[Install]
+WantedBy=graphical.target

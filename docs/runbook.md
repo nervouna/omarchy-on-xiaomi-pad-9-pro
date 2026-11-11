@@ -15,7 +15,7 @@ exactly that build.
 - A Mac with Android platform-tools (`fastboot`, `adb`), `zstd`, `lz4`,
   `python3` (`brew install android-platform-tools zstd lz4`). `zig` and the
   NDK only matter if you rebuild the helpers (`tools/build.sh`).
-- `images/init_boot-stock-OS4.0.5.0.img` (sha256 `61427d71…`): the
+- `images/init_boot-stock-OS4.0.5.0.img` (sha256 `61427d7175377924229d560cb0b046110ee98b9c4cb5e23c309a9b829488bc0b`): the
   `init_boot.img` from the official fastboot ROM of that build
   (`tools/fetch-stock-init-boot.sh ROM.tgz` extracts it). Without that file, section 3
   can build from a dump of an `init_boot` that holds our image.
@@ -151,6 +151,7 @@ activation. Leave Android at least 16–20 GiB: its OTAs stage into userdata.
 ## 7. Afterwards
 
 - Re-apply LoA files at any time: `tools/apply-overlay.sh`.
+- Away from the Mac: `sudo loa-update` installs a signed release of these files over Wi-Fi ([maintenance.md](maintenance.md), "Over-the-air updates").
 - Coding agents: `mise install` (Omarchy manages them with mise).
 - Updates: `omarchy update`, like any Omarchy install; what the tablet adds is in
   [maintenance.md](maintenance.md). A Hyprland that needs a newer Aquamarine stops

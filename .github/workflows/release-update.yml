@@ -1,0 +1,162 @@
+name: Release update
+
+# Started by hand on main (Actions > Release update > Run workflow, or
+# gh workflow run release-update.yml --ref main -f version=YYYYMMDD-N): builds
+# the update bundle from that main commit and publishes it, signed, as a GitHub
+# pre-release, creating the tag update-<version> itself. promote-update.yml makes
+# it the latest release after the canary run. Nobody pushes update-* tags by hand.
+# docs/maintenance.md, "Over-the-air updates", has the procedure.
+#
+# What guards the key is the environment update-signing, which admits only the
+# branch main (a repository setting, enforced whatever a workflow file on another
+# ref says), and main taking changes only through pull requests with the ci check.
+# The `if` on each job is a convenience, not the gate.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version, YYYYMMDD-N (N one more than the highest used that day)
+        required: true
+        type: string
+
+permissions: {}
+
+env:
+  # The signing key's public half; the signature is checked against the file at
+  # the built commit.
+  SIGNERS_PATH: rootfs-overlay/usr/share/loa/update/allowed_signers
+
+jobs:
+  # No secret and no environment: it runs this repository's code (the gate and
+  # the bundle builder) and hands the unsigned bundle on as an artifact.
+  build:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      VERSION: ${{ inputs.version }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          fetch-tags: true
+
+      # Strictly newer than every update-* git tag AND every release: a withdrawn
+      # release keeps its tag, so its version stays used.
+      - name: Check the version
+        run: |
+          set -euo pipefail
+          git tag -l 'update-*' > "$RUNNER_TEMP/tags.txt"
+          gh release list --limit 1000 --json tagName --jq '.[].tagName' > "$RUNNER_TEMP/releases.txt"
+          echo "existing tags:"; cat "$RUNNER_TEMP/tags.txt"
+          echo "existing releases:"; cat "$RUNNER_TEMP/releases.txt"
+          tools/check-update-tag.sh "$VERSION" --existing "$RUNNER_TEMP/tags.txt" --existing "$RUNNER_TEMP/releases.txt"
+
+      # The place for the Aquamarine package (#45, #41): build it here and pass
+      # --aquamarine PKG below. Not before the builder soname is fixed; and the
+      # run must fail when patches/aquamarine-*.patch or AQUAMARINE_TAG changed
+      # since the previous release while AQUAMARINE_PKGREL did not (loa-update
+      # skips a package whose version is equal). The bundle is overlay-only until then.
+      - name: Build the unsigned bundle
+        run: |
+          set -euo pipefail
+          tools/make-update-bundle.sh --version "$VERSION" --out "$RUNNER_TEMP/bundle"
+          tar -xOf "$RUNNER_TEMP/bundle/loa-update.tar" MANIFEST | sed -n '1,2p'
+          [ "$(tar -xOf "$RUNNER_TEMP/bundle/loa-update.tar" MANIFEST | sed -n 1p)" = "version $VERSION" ]
+          [ "$(tar -xOf "$RUNNER_TEMP/bundle/loa-update.tar" MANIFEST | sed -n 2p)" = "commit $GITHUB_SHA" ]
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: update-bundle
+          path: ${{ runner.temp }}/bundle/loa-update.tar
+          retention-days: 7
+          if-no-files-found: error
+
+  # The only job with the environment (and so the key). It checks out nothing and
+  # runs no repository script: it re-validates the version itself, signs the
+  # artifact, verifies the signature against allowed_signers at the built commit
+  # (fetched through the API) and creates the tag and the pre-release.
+  release:
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 10
+    environment: update-signing
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      VERSION: ${{ inputs.version }}
+    steps:
+      - name: Check the version and that its tag is free
+        run: |
+          set -euo pipefail
+          printf '%s\n' "$VERSION" | grep -Eq '^[0-9]{8}-[0-9]+$' || { echo "::error::version must be YYYYMMDD-N"; exit 1; }
+          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/update-$VERSION" > /dev/null 2>&1; then
+            echo "::error::the tag update-$VERSION already exists; a version is never reused"; exit 1
+          fi
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: update-bundle
+          path: bundle
+
+      - name: Check the bundle belongs to this version and commit
+        run: |
+          set -euo pipefail
+          [ "$(tar -xOf bundle/loa-update.tar MANIFEST | sed -n 1p)" = "version $VERSION" ]
+          [ "$(tar -xOf bundle/loa-update.tar MANIFEST | sed -n 2p)" = "commit $GITHUB_SHA" ]
+
+      - name: Sign the bundle
+        env:
+          SIGNING_KEY: ${{ secrets.LOA_UPDATE_SIGNING_KEY }}
+        run: |
+          set -euo pipefail
+          umask 077
+          printf '%s\n' "$SIGNING_KEY" > "$RUNNER_TEMP/signing-key"
+          chmod 600 "$RUNNER_TEMP/signing-key"
+          ssh-keygen -q -Y sign -f "$RUNNER_TEMP/signing-key" -n loa-update bundle/loa-update.tar
+          ls -l bundle
+
+      - name: Remove the key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/signing-key"
+
+      - name: Verify the signature against the built commit's allowed_signers
+        run: |
+          set -euo pipefail
+          gh api -H 'Accept: application/vnd.github.raw' \
+            "repos/$GITHUB_REPOSITORY/contents/$SIGNERS_PATH?ref=$GITHUB_SHA" > "$RUNNER_TEMP/allowed_signers"
+          ssh-keygen -Y verify -f "$RUNNER_TEMP/allowed_signers" -I loa-update -n loa-update \
+            -s bundle/loa-update.tar.sig < bundle/loa-update.tar
+
+      - name: Create the tag and the pre-release
+        run: |
+          set -euo pipefail
+          TAG=update-$VERSION
+          sha=$(sha256sum bundle/loa-update.tar | cut -d' ' -f1)
+          cat > "$RUNNER_TEMP/notes.md" <<EOF
+          Update bundle $VERSION, built from commit $GITHUB_SHA. A pre-release: it is
+          not what a plain \`sudo loa-update\` installs until it is promoted.
+
+          sha256 of loa-update.tar: $sha
+
+          Canary checklist (8 GB tablet, over Wi-Fi):
+
+          1. \`sudo loa-update --tag $TAG\`
+          2. Right away, before the reboot and before any \`check\` or \`--diff\` (they download again): \`sha256sum /var/lib/loa-update/cache/loa-update.tar\` equals the sha256 above.
+          3. Reboot. Check desktop, touch, audio and Wi-Fi.
+          4. After 10 minutes on the desktop the marker is gone (\`/var/lib/loa-update/pending\` does not exist).
+          5. \`sudo loa-update check --tag $TAG\` passes.
+          6. Promote: Actions > Promote update > Run workflow, with tag \`$TAG\` and that sha256.
+          EOF
+          gh release create "$TAG" bundle/loa-update.tar bundle/loa-update.tar.sig \
+            --target "$GITHUB_SHA" --prerelease --latest=false --title "Update $VERSION" \
+            --notes-file "$RUNNER_TEMP/notes.md"

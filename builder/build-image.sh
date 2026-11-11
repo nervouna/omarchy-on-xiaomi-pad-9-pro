@@ -123,6 +123,9 @@ install -m 755 "$D/builder/in-target.sh" "$R/var/tmp/loa-build/in-target.sh"
 PUB=$(cat "$D"/keys/*.pub 2>/dev/null | head -1 || true)
 in_root "$R" /var/tmp/loa-build/in-target.sh "$PUB"
 rm -rf "$R/var/tmp/loa-build"
+# The update bundle version the image carries (build date, 0), so loa-update
+# does not offer this image's own files as an update.
+install -d "$R/var/lib/loa-update"; echo "$STAMP-0" > "$R/var/lib/loa-update/version"
 : > "$R/etc/resolv.conf"          # NetworkManager writes the real one
 root_down "$R"; root_down "$W/builder"
 
