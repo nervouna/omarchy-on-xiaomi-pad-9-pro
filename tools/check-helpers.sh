@@ -17,7 +17,8 @@ sha() { sha256sum "$1" 2>/dev/null || shasum -a 256 "$1"; }
 
 DOC=docs/maintenance.md
 BB_DEB=busybox-static_1.36.1-6ubuntu3.1_arm64.deb
-BB_URL=http://ports.ubuntu.com/ubuntu-ports/pool/main/b/busybox/$BB_DEB
+BB_POOL=ubuntu-ports/pool/main/b/busybox/$BB_DEB
+BB_HOSTS='ports.ubuntu.com azure.ports.ubuntu.com'
 BB_DEB_SHA=d96535e0402c011e0ee43449799df2f4504d44b842e4f2b3a6cbc845508eaafc
 
 # Table rows: | `path` | ... | `sha256` | ...
@@ -51,7 +52,11 @@ echo "check-helpers: $n tracked ELF binaries checked against the table"
 
 # 2. busybox is the unmodified Ubuntu binary
 tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
-if curl -fsSL --retry 5 -o "$tmp/$BB_DEB" "$BB_URL"; then
+got=
+for h in $BB_HOSTS; do
+    curl -fsSL --retry 3 -o "$tmp/$BB_DEB" "http://$h/$BB_POOL" && { got=1; break; }
+done
+if [ -n "$got" ]; then
     if [ "$(sha "$tmp/$BB_DEB" | cut -d' ' -f1)" != "$BB_DEB_SHA" ]; then
         err "$BB_DEB does not have the pinned sha256"
     else
@@ -63,7 +68,7 @@ if curl -fsSL --retry 5 -o "$tmp/$BB_DEB" "$BB_URL"; then
         echo "check-helpers: busybox matches the binary in $BB_DEB"
     fi
 else
-    err "cannot download $BB_URL"
+    err "cannot download $BB_DEB from $BB_HOSTS"
 fi
 
 # 3. source and binary change together
@@ -80,6 +85,8 @@ if [ -n "$BASE" ] && [ -n "$HEAD" ]; then
     pair rootfs-overlay/usr/lib/loa/loa-splash-off tools/src/splash-off/loa-splash-off.c
     pair rootfs-overlay/usr/lib/loa/loa-xtouch tools/src/xtouch/loa-xtouch.c
     pair rootfs-overlay/usr/lib/loa/loa-thp-launcher tools/src/thp-launcher/loa-thp-launcher.c
+    pair rootfs-overlay/opt/loa-android/loa/bin/loa-bthci tools/src/loa-bthci/loa-bthci.cpp
+    pair rootfs-overlay/opt/loa-android/loa/bin/loa-pal tools/src/loa-pal/loa-pal.cpp
     pair rootfs-overlay/opt/loa-android/loa/lib64/libloa_selinux_stub.so tools/src/selinux-stub/libloa_selinux_stub.c
     echo "check-helpers: sources and binaries compared for $BASE...$HEAD"
 fi
