@@ -13,6 +13,9 @@
 /boot/stock-ramdisk.lz4
 .DS_Store
 
+# Claude Code's local state: agent worktrees, session settings
+/.claude/
+
 # Device-specific, never in git: the Android property snapshot from YOUR tablet
 # (tools/capture-android-props.sh), keys, images.
 /rootfs-overlay/usr/lib/loa/android-props.tar.gz
