@@ -365,13 +365,14 @@ Keep backups out of this repository: they hold secrets.
 Ten ELF binaries are tracked in git. `tools/check-helpers.sh` (the `helpers`
 job of `.github/workflows/build-image.yml`, part of the `ci` check) fails when
 a tracked ELF file is missing from this table or its sha256 differs, when
-busybox differs from the Ubuntu package binary, and, on a pull request, when a
+busybox differs from the Ubuntu package binary (only warns when no mirror has
+the package any more), and, on a pull request, when a
 source and the binary built from it do not change together. The sha256 column is
 the file as committed.
 
 | Binary | Source | Toolchain | Build command | sha256 |
 |---|---|---|---|---|
-| `boot/busybox-static` | Ubuntu `busybox-static` 1:1.36.1-6ubuntu3.1 (arm64), BusyBox 1.36.1, unmodified | Ubuntu's own build | extract `usr/bin/busybox` from `http://ports.ubuntu.com/ubuntu-ports/pool/main/b/busybox/busybox-static_1.36.1-6ubuntu3.1_arm64.deb` (deb sha256 `d96535e0402c011e0ee43449799df2f4504d44b842e4f2b3a6cbc845508eaafc`) | `52151e7f322f926b64049cdaa1410dc3ea6485525e0624b05813791c219ae933` |
+| `boot/busybox-static` | Ubuntu `busybox-static` 1:1.36.1-6ubuntu3.1 (arm64), BusyBox 1.36.1, unmodified | Ubuntu's own build | extract `usr/bin/busybox` from `http://ports.ubuntu.com/ubuntu-ports/pool/main/b/busybox/busybox-static_1.36.1-6ubuntu3.1_arm64.deb` (deb sha256 `d96535e0402c011e0ee43449799df2f4504d44b842e4f2b3a6cbc845508eaafc`); once the version is superseded the mirrors drop it: the package page is `https://launchpad.net/ubuntu/+source/busybox/1:1.36.1-6ubuntu3.1` (a direct download from there was not established) | `52151e7f322f926b64049cdaa1410dc3ea6485525e0624b05813791c219ae933` |
 | `rootfs-overlay/usr/lib/loa/busybox` | same file as `boot/busybox-static` | same | same | `52151e7f322f926b64049cdaa1410dc3ea6485525e0624b05813791c219ae933` |
 | `boot/initramfs/loa/loa-helper` | `boot/loa-helper.c` | zig cc, Homebrew build on macOS (`.comment`: Homebrew clang 21.1.8); zig version not recorded | `tools/build.sh c`: `zig cc -target aarch64-linux-musl -O2 -static -s` | `07530fc75241b0eced959a3e718e92436c5fdfc6595c024aeb6ff1c7bfc5d6b0` |
 | `rootfs-overlay/usr/lib/loa/loa-helper` | `boot/loa-helper.c`; `tools/build.sh` copies the boot one, but this file is a different build (30304 bytes against 35456) | same | same | `8e211fe07b0c93905b1f62c027bcd7e5cf04cd3298e8e28929c9f6abb44eba7a` |
