@@ -123,6 +123,11 @@ install -m 755 "$D/builder/in-target.sh" "$R/var/tmp/loa-build/in-target.sh"
 PUB=$(cat "$D"/keys/*.pub 2>/dev/null | head -1 || true)
 in_root "$R" /var/tmp/loa-build/in-target.sh "$PUB"
 rm -rf "$R/var/tmp/loa-build"
+# No sync databases in the image: the installed system follows Omarchy's
+# snapshot, whose databases are older than this build's, so pacman -Sy would keep
+# the newer local ones and downloads would 404. Keep this after the last pacman
+# call (in-target.sh above).
+rm -f "$R"/var/lib/pacman/sync/*.db*
 # The update bundle version the image carries (build date, 0), so loa-update
 # does not offer this image's own files as an update.
 install -d "$R/var/lib/loa-update"; echo "$STAMP-0" > "$R/var/lib/loa-update/version"
@@ -137,6 +142,7 @@ done
 [ -s "$R/etc/machine-id" ] && { echo "machine-id not empty"; fail=1; }
 ls "$R"/etc/ssh/ssh_host_* >/dev/null 2>&1 && { echo "ssh host keys present"; fail=1; }
 find "$R/var/cache/pacman/pkg" "$R/var/log" -type f -print -quit | grep -q . && { echo "package cache or logs present"; fail=1; }
+find "$R/var/lib/pacman/sync" -type f -print -quit 2>/dev/null | grep -q . && { echo "pacman sync databases present"; fail=1; }
 find "$R/usr/lib/modules" -name '*.ko' -print -quit 2>/dev/null | grep -q . && { echo "vendor modules present"; fail=1; }
 [ -e "$R/opt/loa-thp" ] && { echo "vendor touch libs present"; fail=1; }
 for f in /usr/bin/Hyprland /opt/omarchy-android/mesa/root/usr/lib/libgallium-*.so /usr/share/omarchy/shell/shell.qml \

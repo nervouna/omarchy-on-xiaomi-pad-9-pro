@@ -19,7 +19,9 @@ the tablet follows Omarchy's **aarch64 stable channel**: `[omarchy]`
 (arm-stable-mirror.omarchy.org, about a day behind ALARM). Update the upstream
 way: `omarchy update` (or the Update menu). It runs `pacman -Syu`, Omarchy's
 migrations, the post-update hooks and `mise up`. Plain `pacman -Syu` is refused
-by Omarchy's guard hook; `OMARCHY_ALLOW_DIRECT_PACMAN=1` overrides it.
+by Omarchy's guard hook; `OMARCHY_ALLOW_DIRECT_PACMAN=1` overrides it. The image
+ships no sync databases (a build's would be newer than Omarchy's snapshot and make
+`pacman -S` fail with 404), and `tools/personalize.sh` ends with `pacman -Syy`.
 
 What the tablet adds (all in `rootfs-overlay/`):
 

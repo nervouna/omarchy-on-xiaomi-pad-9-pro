@@ -37,5 +37,9 @@ pacman-key --populate >/dev/null 2>&1
 echo "pacman keyring re-initialised: $(pacman-key --list-keys 2>/dev/null | grep -c '^pub') keys"
 /usr/lib/loa/setup-omarchy-repo.sh   # the keyring reset dropped Omarchy's key
 echo "$H" > /etc/hostname; hostname "$H"; echo "hostname: $H"
+# Images built before #52 keep sync databases newer than Omarchy's snapshot, so
+# pacman -S gets 404s: force a refresh (needs network; a failure only prints a note).
+if OMARCHY_ALLOW_DIRECT_PACMAN=1 pacman -Syy >/dev/null 2>&1; then echo "pacman databases refreshed"
+else echo "note: pacman -Syy failed (no network yet?); run it once online"; fi
 echo "done: set a password (tools/tssh -t passwd omarchy), then reboot"
 EOF
