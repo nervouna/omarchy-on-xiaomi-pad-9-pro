@@ -41,6 +41,22 @@ jobs:
       - run: tools/lint.sh
       - run: tools/test-check-update-tag.sh
 
+  helpers:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: command -v zstd >/dev/null || sudo apt-get install -y --no-install-recommends zstd
+      - env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [ "$EVENT" != pull_request ]; then BASE=; HEAD=; fi
+          BASE=$BASE HEAD=$HEAD tools/check-helpers.sh
+
   changes:
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 5
@@ -216,7 +232,7 @@ jobs:
   # image), so the required check never waits on a job that did not run.
   ci:
     if: always()
-    needs: [check-public, lint, changes, build]
+    needs: [check-public, lint, helpers, changes, build]
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 5
     steps:
