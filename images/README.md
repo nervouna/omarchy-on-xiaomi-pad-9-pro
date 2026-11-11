@@ -2,7 +2,7 @@
 
 | File | Source | sha256 |
 |---|---|---|
-| `init_boot-stock-OS4.0.5.0.img` | `init_boot.img` from the official fastboot ROM OS4.0.5.0.XFPCNXM (restore image) | `61427d71…` |
+| `init_boot-stock-OS4.0.5.0.img` | `init_boot.img` from the official fastboot ROM OS4.0.5.0.XFPCNXM (restore image); `tools/fetch-stock-init-boot.sh ARCHIVE 61427d7175377924229d560cb0b046110ee98b9c4cb5e23c309a9b829488bc0b` extracts and checks it | `61427d7175377924229d560cb0b046110ee98b9c4cb5e23c309a9b829488bc0b` |
 | `init_boot-omarchy.img` | `python3 boot/build-init-boot.py` | changes per build |
 | `init_boot-magisk-*.img` | Magisk-patched stock init_boot (only for Android-side root work) | |
 | `omarchy-{clean,personal}-DATE.img.zst` | `tools/make-image.sh` (+ `.sha256`) | |
