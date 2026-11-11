@@ -1,0 +1,39 @@
+name: exp
+on:
+  push:
+    branches: [7-helper-provenance]
+permissions:
+  contents: read
+jobs:
+  zig:
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          sha256sum boot/initramfs/loa/loa-helper rootfs-overlay/usr/lib/loa/loa-helper rootfs-overlay/usr/lib/loa/loa-splash-off rootfs-overlay/usr/lib/loa/loa-xtouch
+          for v in 0.14.1 0.15.1 0.15.2 0.16.0 0.17.0 0.17.1; do
+            echo "=== zig $v"
+            d=$RUNNER_TEMP/zig-$v; mkdir -p $d
+            curl -fsSL https://ziglang.org/download/$v/zig-aarch64-linux-$v.tar.xz | tar -xJ -C $d --strip-components=1 || { echo "no tarball"; continue; }
+            z=$d/zig
+            $z version
+            for p in boot/loa-helper.c:loa-helper tools/src/splash-off/loa-splash-off.c:loa-splash-off tools/src/xtouch/loa-xtouch.c:loa-xtouch; do
+              src=${p%%:*}; out=$RUNNER_TEMP/$v-${p##*:}
+              $z cc -target aarch64-linux-musl -O2 -static -s -o $out $src && sha256sum $out
+            done
+          done
+  ndk:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          echo "ANDROID_NDK_ROOT=$ANDROID_NDK_ROOT"; ls /usr/local/lib/android/sdk/ndk
+          sha256sum rootfs-overlay/opt/loa-android/loa/lib64/libloa_selinux_stub.so rootfs-overlay/usr/lib/loa/loa-thp-launcher
+          for n in /usr/local/lib/android/sdk/ndk/*; do
+            echo "=== $n"
+            B=$n/toolchains/llvm/prebuilt/linux-x86_64/bin
+            $B/clang --version | head -1
+            $B/aarch64-linux-android31-clang -O2 -fPIC -shared -nostdlib -o /tmp/stub.so tools/src/selinux-stub/libloa_selinux_stub.c
+            $B/llvm-strip --strip-debug /tmp/stub.so; sha256sum /tmp/stub.so
+            for api in 31 35; do $B/aarch64-linux-android$api-clang -O2 -o /tmp/thp tools/src/thp-launcher/loa-thp-launcher.c -ldl; sha256sum /tmp/thp; done
+          done
