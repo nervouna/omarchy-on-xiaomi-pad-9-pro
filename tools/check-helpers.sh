@@ -17,8 +17,9 @@ sha() { sha256sum "$1" 2>/dev/null || shasum -a 256 "$1"; }
 
 DOC=docs/maintenance.md
 BB_DEB=busybox-static_1.36.1-6ubuntu3.1_arm64.deb
-BB_POOL=ubuntu-ports/pool/main/b/busybox/$BB_DEB
-BB_HOSTS='ports.ubuntu.com azure.ports.ubuntu.com'
+BB_POOL=pool/main/b/busybox/$BB_DEB
+# Mirrors of ports.ubuntu.com; the package sha256 below is what is trusted.
+BB_HOSTS='ports.ubuntu.com/ubuntu-ports azure.ports.ubuntu.com/ubuntu-ports mirrors.kernel.org/ubuntu-ports'
 BB_DEB_SHA=d96535e0402c011e0ee43449799df2f4504d44b842e4f2b3a6cbc845508eaafc
 
 # Table rows: | `path` | ... | `sha256` | ...
@@ -54,19 +55,17 @@ echo "check-helpers: $n tracked ELF binaries checked against the table"
 tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
 got=
 for h in $BB_HOSTS; do
-    curl -fsSL --retry 3 -o "$tmp/$BB_DEB" "http://$h/$BB_POOL" && { got=1; break; }
+    curl -fsSL --retry 2 -o "$tmp/$BB_DEB" "http://$h/$BB_POOL" || continue
+    [ "$(sha "$tmp/$BB_DEB" | cut -d' ' -f1)" = "$BB_DEB_SHA" ] && { got=1; break; }
+    echo "check-helpers: $h served $BB_DEB with another sha256"
 done
 if [ -n "$got" ]; then
-    if [ "$(sha "$tmp/$BB_DEB" | cut -d' ' -f1)" != "$BB_DEB_SHA" ]; then
-        err "$BB_DEB does not have the pinned sha256"
-    else
-        (cd "$tmp" && ar x "$BB_DEB" && zstd -dc data.tar.zst | tar -x ./usr/bin/busybox) || err "cannot unpack $BB_DEB"
-        want=$(sha "$tmp/usr/bin/busybox" | cut -d' ' -f1)
-        for f in boot/busybox-static rootfs-overlay/usr/lib/loa/busybox; do
-            [ "$(sha "$f" | cut -d' ' -f1)" = "$want" ] || err "$f differs from the busybox in $BB_DEB"
-        done
-        echo "check-helpers: busybox matches the binary in $BB_DEB"
-    fi
+    (cd "$tmp" && ar x "$BB_DEB" && zstd -dc data.tar.zst | tar -x ./usr/bin/busybox) || err "cannot unpack $BB_DEB"
+    want=$(sha "$tmp/usr/bin/busybox" | cut -d' ' -f1)
+    for f in boot/busybox-static rootfs-overlay/usr/lib/loa/busybox; do
+        [ "$(sha "$f" | cut -d' ' -f1)" = "$want" ] || err "$f differs from the busybox in $BB_DEB"
+    done
+    echo "check-helpers: busybox matches the binary in $BB_DEB"
 else
     err "cannot download $BB_DEB from $BB_HOSTS"
 fi
