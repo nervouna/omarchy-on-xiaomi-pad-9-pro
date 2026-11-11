@@ -179,6 +179,13 @@ jobs:
           echo "image size: $size"
           [ "$size" = 17179869184 ]
           sudo e2fsck -fn "${img%.zst}"
+          # The built root ships no pacman sync databases (#52).
+          sudo mkdir -p /mnt/loa-sync-check
+          sudo mount -o loop,ro "${img%.zst}" /mnt/loa-sync-check
+          n=$(sudo find /mnt/loa-sync-check/var/lib/pacman/sync -type f | wc -l)
+          sudo umount /mnt/loa-sync-check
+          echo "files in /var/lib/pacman/sync of the built root: $n"
+          [ "$n" = 0 ]
 
       # loa-update against the real root, in the decompressed scratch copy of
       # the image (the uploaded .zst is not touched), with a throwaway key.

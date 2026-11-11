@@ -303,9 +303,24 @@ def curated():
     return hide
 
 
+def have_sync_dbs():
+    """True if pacman's sync directory (under its DBPath) holds a database.
+    Without one `pacman -Sp` can't find any package and every entry would be
+    hidden."""
+    r = subprocess.run(["pacman-conf", "DBPath"], capture_output=True, text=True)
+    dbpath = r.stdout.strip() if r.returncode == 0 and r.stdout.strip() else "/var/lib/pacman/"
+    try:
+        return any(f.endswith(".db") for f in os.listdir(os.path.join(dbpath, "sync")))
+    except OSError:
+        return False
+
+
 def main():
     apply = "--apply" in sys.argv[1:]
     if not os.path.isfile(MENU):
+        return 0
+    if not have_sync_dbs():
+        print("LoA: menu: no pacman sync databases yet, audit skipped (run pacman -Syy)")
         return 0
     if apply and not os.access(MENU, os.W_OK):
         sys.exit("omarchy-menu-audit: --apply needs root")
