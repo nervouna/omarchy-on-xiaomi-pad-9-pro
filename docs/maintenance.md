@@ -317,6 +317,13 @@ pull requests that touch `builder/`, `rootfs-overlay/`, `patches/`,
 request: `check-public` (`tools/check-public.sh`) and `lint` (`tools/lint.sh`:
 shell and Python syntax, shellcheck at error level).
 
+The tarball's signature is checked against the fingerprint pinned in the
+workflow (`ALARM_KEY_FPR`). The public key itself is read from
+`builder/archlinuxarm-keyring.gpg`, a copy of `archlinuxarm.gpg` from
+github.com/archlinuxarm/archlinuxarm-keyring, so the job does not depend on a
+keyserver. The bootstrap's `apt-get` and `pacman` downloads retry up to five
+times, because runner networking drops out now and then.
+
 The `ci` job passes when every other job passed or was skipped. It is the one
 check that `main`'s branch protection requires, so pull requests land with
 `gh pr merge --auto --squash` once it is green; direct pushes to `main` are

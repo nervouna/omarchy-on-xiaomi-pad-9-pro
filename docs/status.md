@@ -1,6 +1,6 @@
 # Native Omarchy port status
 
-Last updated: 2026-10-22
+Last updated: 2026-11-12
 
 ## Goal
 
@@ -13,9 +13,16 @@ Xiaomi Pad 9 Pro (`shuntian`, SM8845, slot B, stock OS4.0.5.0.XFPCNXM kernel
 6.12.69-android16 GKI; the ROM is Android 17). Everything listed here was verified on the device; items
 marked *user* were confirmed by looking at, touching or listening to the tablet.
 
+The two test tablets (8 GB and 12 GB) were both reinstalled on 2026-11-11 from the
+same CI-built image (`omarchy-scratch-20261110`): Omarchy 4.5.0-3, Hyprland 0.57.1-2,
+patched Aquamarine 0.16.0-100, quickshell 0.3.2. On 4.5 the owner has verified the
+display, touch, keyboard cover, sound, power key, charging and the Omarchy menu. The
+pen and Bluetooth headphones are not yet re-checked on 4.5
+([#38](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/38)).
+
 | Area | State |
 | --- | --- |
-| Automatic boot into native Omarchy (systemd, Hyprland, Omarchy shell) | works; root on its own 64 GiB `omarchy` partition (carved from userdata) |
+| Automatic boot into native Omarchy (systemd, Hyprland, Omarchy shell) | works; root on its own `omarchy` partition (64 GiB on the 8 GB tablet, 192 GiB on the 12 GB one, carved from userdata); `ramdump` holds a fallback root on both |
 | Display 3200x2136@120, no underruns | works (*user*) |
 | GPU: Adreno 829 via KGSL Mesa (GL + Vulkan) for Hyprland and apps | works (*user*: smooth) |
 | Touch (Xiaomi THP) with correct orientation | works (*user*) |
@@ -28,19 +35,19 @@ marked *user* were confirmed by looking at, touching or listening to the tablet.
 | Power button: short press screen off/on, hold -> Omarchy system menu | works (*user*) |
 | Brightness control (panel0-backlight) | works (*user*) |
 | Screen-off (DPMS), idle screen-off after 5 min (hypridle, no lock) | works (*user*); wake by power key, not touch |
-| Suspend (s2idle) on battery while the screen is off (loa-sleepd) | works (*user*); wake by power key or keyboard key (not cover open) |
+| Suspend (s2idle) on battery while the screen is off (loa-sleepd) | works (*user*); wake by power key or keyboard key (not cover open, [#15](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/15)) |
 | Low battery: clean power-off at 3 % (loa-sleepd; RTC wake-ups re-check while asleep) | works (tested with a simulated 2 %, awake and asleep) |
 | Keyboard backlight (auto in dim light, `loa-kbd-backlight`) | works (*user*: levels) |
 | Bluetooth (stock HAL + bridge -> BlueZ): pairing, A2DP headphones | works (*user*) |
 | Xiaomi pogo keyboard + touchpad (DSP relay, enable packets, libinput quirk) | works (*user*), incl. reattach |
 | Keyboard cover: close = screen off, open = screen on (hall SW_LID) | works (*user*) |
 | App launching (uwsm) | works (*user*) |
-| Charging: battery auth (batterysecret), PPS fast charge via charge pumps | works: ~34 W with a Xiaomi 55 W adapter; adapter auth (full power) in progress |
+| Charging: battery auth (batterysecret), PPS fast charge via charge pumps | works: ~34 W with a Xiaomi 55 W adapter; adapter auth for full power in progress ([#16](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/16)) |
 | Omarchy setup menu (nvim) and default-agent picker (mise; agents via `mise use -g`) | works |
-| Omarchy updates the upstream way (`omarchy update`: Omarchy's own aarch64 packages, its ALARM snapshot, its migrations) | works on the 12 GB tablet (4.0.6, 2026-10-22); the 8 GB tablet still runs the copied 158e8cf tree |
-| Xiaomi Focus Pencil Pro: BLE pairing, pointer (hover/tap/drag), double tap = right click | works (*user*); pinch/swipes unused for now; motion sensors, haptics, pressure open |
+| Omarchy updates the upstream way (`omarchy update`: Omarchy's own aarch64 packages, its ALARM snapshot, its migrations) | works; both test tablets run 4.5.0-3 since their 2026-11-11 reinstalls (the 4.0.6 update of 2026-10-22 is superseded). Omarchy patches left: 0003, 0005, 0009; [#43](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/43) drops 0006-0008 |
+| Xiaomi Focus Pencil Pro: BLE pairing, pointer (hover/tap/drag), double tap = right click | works (*user*); pinch/swipes unused for now; motion sensors, haptics, pressure open ([#20](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/20)) |
 | Ambient light sensor (auto-brightness, own SSC client) | works (*user*) |
-| Cameras, modem, other sensors (auto-rotate) | not attempted |
+| Cameras ([#21](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/21)), modem ([#22](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/22)), other sensors and auto-rotate ([#18](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/18)) | not attempted |
 
 Fastboot was never touched. Power + Volume Down still enters it. Stage 1 also
 reboots straight to Fastboot after 3 boots that never reach the desktop, and a
@@ -50,9 +57,9 @@ kernel panic reboots instead of parking in Qualcomm CrashDump mode.
 
 1. `init_boot_b` holds `init_boot-omarchy.img`: a busybox stage-1 init plus the
    stock Android first-stage ramdisk. It loads the stock first-stage modules,
-   mounts the ext4 root on the 64 GiB `omarchy` partition (carved from the
-   front of userdata; falls back to the old copy on the 17 GiB `ramdump`
-   partition) and switches to systemd. It can hand over to the stock Android
+   mounts the ext4 root on the `omarchy` partition (64 GiB on the 8 GB tablet,
+   192 GiB on the 12 GB one; carved from the front of userdata; falls back to the
+   old copy on the 17 GiB `ramdump` partition) and switches to systemd. It can hand over to the stock Android
    init instead (one-shot flag from `reboot-to-android`, or Volume Up held
    early in boot).
 2. systemd units load the stock vendor modules in Android's order, start the
@@ -81,26 +88,25 @@ fastboot flash init_boot_<slot> images/init_boot-stock-OS4.0.5.0.img
 
 ## Open items
 
-- Charging, in progress: Xiaomi adapter authentication (pd_verified) never
-  completes. The ADSP accepts batterysecret's data-role swap request (cmd 200) but never
-  swaps, so charging stays at the unverified ~34 W instead of up to 55 W. Next:
-  compare with stock Android on the same charger at low battery (Xiaomi tapers
-  near full). Details in the engineering log.
-- Suspend: loa-sleepd suspends (s2idle) 10 s after the screen goes off, on
-  battery only; Wi-Fi/Bluetooth are switched off for the sleep and return on
-  wake. Opening the keyboard cover does not wake it (the DSP holds the hall
-  event); press a key or the power button. Details in the engineering log.
-- Standby drain: s2idle drains about 3.7 %/h (a full battery lasted 27 h
-  asleep), about the same as staying awake with the screen off, so suspend
-  saves little. Also once (2026-10-10) dwc3 refused every suspend for a day
-  with no USB power attached. Neither investigated yet.
-- Screensaver: works where `ttfx` is installed (Omarchy's repo now ships an
-  aarch64 build; the older installs toggled it off). Omarchy patch 0005 keeps it from relighting a
-  screen switched off with the power key. One already running when the screen
-  goes off keeps animating until the next suspend (indefinitely while
-  charging); dismissing it would relight the screen. Tap-to-wake needs the
-  Xiaomi touch gesture mode.
-- Headset jack not wired yet (needs a listening test for the PAL output id).
+Each item is tracked in its issue:
+
+- Charging: Xiaomi adapter authentication for full power,
+  [#16](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/16).
+- Standby drain: s2idle drains about 3.7 %/h, about the same as staying awake
+  with the screen off, [#14](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/14).
+- Wake on cover open, [#15](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/15);
+  tap-to-wake, [#19](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/19);
+  auto-rotate, [#18](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/18).
+- Screensaver, [#23](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/23).
+- Headset jack, [#17](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/17).
+- Pen features (motion sensors, haptics, pressure, palm rejection),
+  [#20](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/20).
+- Cameras, [#21](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/21);
+  modem, [#22](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/22).
+- Prebuilt images, [#24](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/24).
+
+Not tracked as an issue:
+
 - Omarchy's Wi-Fi UI expects iwd, which can't run (the kernel lacks AF_ALG).
   NetworkManager is used instead; the Omarchy network panel uses
   NetworkManager directly.

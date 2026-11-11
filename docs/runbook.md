@@ -7,8 +7,10 @@ exactly that build.
 
 > Status: the from-scratch path (1A) was built and installed on a tablet on
 > 2026-09-29 (build on another tablet running the port, first boot imported the
-> vendor files by itself). A third tablet was installed the same way on slot **a**
-> on 2026-11-07, its image built in an Arch Linux ARM machine under OrbStack on the Mac.
+> vendor files by itself). Both test tablets were reinstalled on 2026-11-11 from the
+> CI-built image (section 1A). A third tablet, not one of the two test tablets, was
+> installed the same way on slot **a** on 2026-11-07, its image built in an Arch Linux
+> ARM machine under OrbStack on the Mac.
 
 ## 0. What you need
 
@@ -26,12 +28,20 @@ exactly that build.
 - `rootfs-overlay/usr/lib/loa/android-props.tar.gz`: the Android property
   snapshot of *your* tablet (git-ignored; it holds serial numbers). Capture it
   with `tools/capture-android-props.sh` while stock Android runs with Magisk root.
-- For 1A: an ARM64 Arch Linux ARM machine to build on (a tablet already
-  running the port, an ARM64 container or VM such as `orb create -a arm64 arch` in
-  OrbStack on an Apple Silicon Mac, a GitHub ARM runner) with access
+- For 1A: the image that CI builds (section 1A), or an ARM64 Arch Linux ARM machine
+  to build on (a tablet already running the port, an ARM64 container or VM such as
+  `orb create -a arm64 arch` in OrbStack on an Apple Silicon Mac) with access
   to GitHub, crates.io and the Arch Linux ARM mirrors. For 1B: a working tablet.
 
 ## 1A. Build the root image from scratch (recommended)
+
+CI builds this image on a GitHub ARM runner; [maintenance.md](maintenance.md#root-image-from-ci)
+says how to download the `omarchy-scratch-DATE.img.zst` artifact. The CI image has no
+SSH key, Android property snapshot or Wi-Fi profile, so `tools/tssh` can't log in to
+it at first. The way in is the root console on the USB serial port, which needs no
+key (`screen /dev/cu.usbmodem* 115200` on the Mac): append your `keys/*.pub` to
+`/root/.ssh/authorized_keys` there, then go on with section 5. To build the image
+locally instead (it then carries your key and snapshot):
 
 ```
 builder/build-image.sh [OUTDIR]        # as root on the ARM64 build machine; ~30 min
@@ -107,6 +117,31 @@ tools/install.sh images/omarchy-scratch-DATE.img.zst     # or omarchy-clean-DATE
   2. `adb push` the raw image to `/data/local/tmp`;
   3. `adb shell su -c dd if=/data/local/tmp/omarchy.img of=/dev/block/by-name/ramdump bs=16M`;
   4. back in Fastboot, flash `images/init_boot-omarchy.img` to `init_boot_<slot>`.
+
+## 4A. Reinstall from the running system (no Fastboot)
+
+A tablet that already runs the port can take a new image from Linux, without
+Fastboot. Both test tablets were reinstalled this way on 2026-11-11 (issues
+[#9](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/9) and
+[#10](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/10) have the
+commands and their output). The root you are booted from can't be overwritten, so a
+tablet that runs from `omarchy` goes through `ramdump` first:
+
+1. Back up what you need, and keep a dump of the current `init_boot_<slot>`.
+2. Write the image to the root partition you are **not** booted from
+   (`zstd -dc IMAGE | dd of=/dev/disk/by-partlabel/PART bs=16M conv=fsync`), compare
+   the sha256 of what was written with the decompressed image, run `e2fsck -f` and
+   `resize2fs` on it.
+3. Mount it and copy in root's `authorized_keys`, `/usr/lib/loa/android-props.tar.gz`
+   and the Wi-Fi profiles from `/etc/NetworkManager/system-connections` (a CI image
+   has none of them).
+4. Build `init_boot` with that partition first (`LOA_ROOT_PARTS`, section 3), write it
+   to `/dev/disk/by-partlabel/init_boot_<slot>` with `dd`, read it back, and reboot.
+5. If the target was `ramdump`: repeat steps 2 to 4 from there for `omarchy`, with the
+   normal `init_boot`.
+6. On the new root: `tools/personalize.sh`, `tools/apply-overlay.sh`, set the password,
+   reboot, check. The other partition keeps a root to fall back to: stage 1 mounts it
+   when `omarchy` doesn't mount.
 
 ## 5. Personalize (native Omarchy)
 
