@@ -35,7 +35,7 @@ chroot，也不是 PRoot：平板在原厂 Android GKI 内核上直接运行 sys
 > - **一台 Mac**，装好 Android platform-tools、`zstd`、`lz4` 和 `python3`。主机端脚本是为 macOS 写的。
 > - **原厂 Android 上的 Magisk root**，只需一次，用来采集你这台平板的 Android 属性
 >   （`tools/capture-android-props.sh`）。
-> - **一台 ARM64 的 Arch Linux ARM 机器用来构建镜像**：ARM64 容器或虚拟机，或一台已运行本项目的平板。需要能访问 GitHub。
+> - **获取根镜像的方式**：由 CI 在 GitHub 的 ARM 构建机上构建（见 [docs/maintenance.md](docs/maintenance.md#root-image-from-ci)，英文）。自己构建则需要一台 ARM64 的 Arch Linux ARM 机器：ARM64 容器或虚拟机，或一台已运行本项目的平板。两种方式都需要能访问 GitHub。
 
 ## 可用功能
 
@@ -50,7 +50,7 @@ chroot，也不是 PRoot：平板在原厂 Android GKI 内核上直接运行 sys
 | 充电（电池认证、PPS 快充约 34 W） | 可用；充电器认证（满功率）进行中 |
 | Xiaomi Focus Pencil Pro 触控笔当指针用（自动配对、悬停、点按、拖动、双击 = 右键） | 可用 |
 | 中文输入（fcitx5） | 可用 |
-| 摄像头、基带、耳机孔、轻触唤醒、自动旋转 | 尚未实现 |
+| 摄像头（[#21](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/21)）、基带（[#22](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/22)）、耳机孔（[#17](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/17)）、轻触唤醒（[#19](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/19)）、自动旋转（[#18](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/18)） | 尚未实现 |
 
 详情与注意事项：[docs/status.md](docs/status.md)（英文）。
 
@@ -79,12 +79,12 @@ chroot，也不是 PRoot：平板在原厂 Android GKI 内核上直接运行 sys
 
 ## 路线图
 
-- **预构建镜像**：根文件系统镜像已可从零构建，且不含任何厂商文件（每台平板首次启动时自行导入）。
-  下一步：在 GitHub 的 ARM 构建机上构建并发布；首次登录设置密码，而不是只能用 SSH 密钥；属性快照不再依赖 Magisk。
-- **Focus Pencil Pro 触控笔**：运动传感器（加速度计 + 陀螺仪，用于隔空手势）、触觉反馈、压感/倾斜、防误触。
-- **充电**：小米充电器认证，实现满功率充电。
-- **摄像头**、**基带**、**耳机孔**。
-- **轻触唤醒**、**开盖唤醒**、**自动旋转**。
+- **预构建镜像**（[#24](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/24)）：根文件系统镜像已可由 CI 从零构建，且不含任何厂商文件（每台平板首次启动时自行导入），但尚未发布。
+  下一步：发布镜像；首次登录设置密码，而不是只能用 SSH 密钥；属性快照不再依赖 Magisk。
+- **Focus Pencil Pro 触控笔**（[#20](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/20)）：运动传感器（加速度计 + 陀螺仪，用于隔空手势）、触觉反馈、压感/倾斜、防误触。
+- **充电**（[#16](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/16)）：小米充电器认证，实现满功率充电。
+- **摄像头**（[#21](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/21)）、**基带**（[#22](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/22)）、**耳机孔**（[#17](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/17)）。
+- **轻触唤醒**（[#19](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/19)）、**开盖唤醒**（[#15](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/15)）、**自动旋转**（[#18](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/18)）。
 
 ## 安全第一
 

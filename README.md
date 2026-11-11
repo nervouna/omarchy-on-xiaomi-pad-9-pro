@@ -52,8 +52,10 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) to report a bug or send a fix, and
 >   scripts are written for macOS.
 > - **Magisk root on stock Android**, once, to capture your tablet's Android
 >   properties (`tools/capture-android-props.sh`).
-> - **An ARM64 Arch Linux ARM machine to build the image on**: an ARM64 container
->   or VM, or a tablet that already runs the port. It needs access to GitHub.
+> - **A way to get the root image**: CI builds it on GitHub's ARM runners
+>   ([docs/maintenance.md](docs/maintenance.md#root-image-from-ci)). To build it
+>   yourself you need an ARM64 Arch Linux ARM machine: an ARM64 container or VM, or a
+>   tablet that already runs the port. Either way it needs access to GitHub.
 
 ## What works
 
@@ -68,7 +70,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) to report a bug or send a fix, and
 | Charging (battery auth, PPS fast charge ~34 W) | works; full-power adapter auth in progress |
 | Xiaomi Focus Pencil Pro as a pointer (auto-pairing, hover, tap, drag, double tap = right click) | works |
 | Chinese input (fcitx5) | works |
-| Cameras, modem, headset jack, tap-to-wake, auto-rotate | not yet |
+| Cameras ([#21](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/21)), modem ([#22](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/22)), headset jack ([#17](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/17)), tap-to-wake ([#19](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/19)), auto-rotate ([#18](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/18)) | not yet |
 
 Details and caveats: [docs/status.md](docs/status.md).
 
@@ -102,15 +104,22 @@ double-scaled). None of this is in the repo; it just shows what the port can car
 
 ## Roadmap
 
-- **Prebuilt images**: the root image now builds from scratch and carries no
-  vendor files (each tablet imports its own on first boot). Next: build it on
-  GitHub's ARM runners and publish it, a first-login password instead of
-  SSH-key-only access, and a property snapshot that doesn't need Magisk.
-- **Focus Pencil Pro**: motion sensors (accelerometer + gyro, for air gestures),
-  haptic feedback, pressure/tilt, palm rejection.
-- **Charging**: Xiaomi adapter authentication for full-power charging.
-- **Cameras**, **modem**, **headset jack**.
-- **Tap-to-wake**, **wake on cover open**, **auto-rotate**.
+- **Prebuilt images** ([#24](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/24)):
+  CI builds the root image from scratch, and it carries no vendor files (each tablet
+  imports its own on first boot). Nothing is published yet. Next: publish it, a
+  first-login password instead of SSH-key-only access, and a property snapshot that
+  doesn't need Magisk.
+- **Focus Pencil Pro** ([#20](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/20)):
+  motion sensors (accelerometer + gyro, for air gestures), haptic feedback,
+  pressure/tilt, palm rejection.
+- **Charging** ([#16](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/16)):
+  Xiaomi adapter authentication for full-power charging.
+- **Cameras** ([#21](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/21)),
+  **modem** ([#22](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/22)),
+  **headset jack** ([#17](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/17)).
+- **Tap-to-wake** ([#19](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/19)),
+  **wake on cover open** ([#15](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/15)),
+  **auto-rotate** ([#18](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/18)).
 
 ## Safety first
 

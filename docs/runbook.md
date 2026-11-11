@@ -7,8 +7,10 @@ exactly that build.
 
 > Status: the from-scratch path (1A) was built and installed on a tablet on
 > 2026-09-29 (build on another tablet running the port, first boot imported the
-> vendor files by itself). A third tablet was installed the same way on slot **a**
-> on 2026-11-07, its image built in an Arch Linux ARM machine under OrbStack on the Mac.
+> vendor files by itself). Both test tablets were reinstalled on 2026-11-11 from the
+> CI-built image (section 1A). A third tablet, not one of the two test tablets, was
+> installed the same way on slot **a** on 2026-11-07, its image built in an Arch Linux
+> ARM machine under OrbStack on the Mac.
 
 ## 0. What you need
 
@@ -26,12 +28,17 @@ exactly that build.
 - `rootfs-overlay/usr/lib/loa/android-props.tar.gz`: the Android property
   snapshot of *your* tablet (git-ignored; it holds serial numbers). Capture it
   with `tools/capture-android-props.sh` while stock Android runs with Magisk root.
-- For 1A: an ARM64 Arch Linux ARM machine to build on (a tablet already
-  running the port, an ARM64 container or VM such as `orb create -a arm64 arch` in
-  OrbStack on an Apple Silicon Mac, a GitHub ARM runner) with access
+- For 1A: the image that CI builds (section 1A), or an ARM64 Arch Linux ARM machine
+  to build on (a tablet already running the port, an ARM64 container or VM such as
+  `orb create -a arm64 arch` in OrbStack on an Apple Silicon Mac) with access
   to GitHub, crates.io and the Arch Linux ARM mirrors. For 1B: a working tablet.
 
 ## 1A. Build the root image from scratch (recommended)
+
+CI builds this image on a GitHub ARM runner; [maintenance.md](maintenance.md#root-image-from-ci)
+says how to download the `omarchy-scratch-DATE.img.zst` artifact. The CI image has no
+SSH key, Android property snapshot or Wi-Fi profile; `tools/apply-overlay.sh` adds your
+key after the first boot. To build it locally instead:
 
 ```
 builder/build-image.sh [OUTDIR]        # as root on the ARM64 build machine; ~30 min
@@ -107,6 +114,20 @@ tools/install.sh images/omarchy-scratch-DATE.img.zst     # or omarchy-clean-DATE
   2. `adb push` the raw image to `/data/local/tmp`;
   3. `adb shell su -c dd if=/data/local/tmp/omarchy.img of=/dev/block/by-name/ramdump bs=16M`;
   4. back in Fastboot, flash `images/init_boot-omarchy.img` to `init_boot_<slot>`.
+
+## 4A. Reinstall from the running system (no Fastboot)
+
+A tablet that already runs the port can take a new image from Linux, without
+Fastboot. Issue [#9](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/9)
+has the detailed steps used for the 8 GB tablet's 2026-11-11 reinstall. In short:
+
+1. Write the image to the other root partition (`omarchy`, or `ramdump` if that is the
+   one you are not booted from) and grow its filesystem to the partition size.
+2. Carry over the Wi-Fi profile and the SSH key, then run `tools/personalize.sh` and
+   `tools/apply-overlay.sh`.
+3. Build `init_boot` with the root order you want (`LOA_ROOT_PARTS`, section 3), write
+   it to the active slot's `init_boot` partition from Linux, and reboot.
+4. Keep the old root as the rollback until the checks pass.
 
 ## 5. Personalize (native Omarchy)
 
