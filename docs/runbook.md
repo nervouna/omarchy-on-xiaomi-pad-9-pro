@@ -37,8 +37,11 @@ exactly that build.
 
 CI builds this image on a GitHub ARM runner; [maintenance.md](maintenance.md#root-image-from-ci)
 says how to download the `omarchy-scratch-DATE.img.zst` artifact. The CI image has no
-SSH key, Android property snapshot or Wi-Fi profile; `tools/apply-overlay.sh` adds your
-key after the first boot. To build it locally instead:
+SSH key, Android property snapshot or Wi-Fi profile, so `tools/tssh` can't log in to
+it at first. The way in is the root console on the USB serial port, which needs no
+key (`screen /dev/cu.usbmodem* 115200` on the Mac): append your `keys/*.pub` to
+`/root/.ssh/authorized_keys` there, then go on with section 5. To build the image
+locally instead (it then carries your key and snapshot):
 
 ```
 builder/build-image.sh [OUTDIR]        # as root on the ARM64 build machine; ~30 min
@@ -118,16 +121,27 @@ tools/install.sh images/omarchy-scratch-DATE.img.zst     # or omarchy-clean-DATE
 ## 4A. Reinstall from the running system (no Fastboot)
 
 A tablet that already runs the port can take a new image from Linux, without
-Fastboot. Issue [#9](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/9)
-has the detailed steps used for the 8 GB tablet's 2026-11-11 reinstall. In short:
+Fastboot. Both test tablets were reinstalled this way on 2026-11-11 (issues
+[#9](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/9) and
+[#10](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/10) have the
+commands and their output). The root you are booted from can't be overwritten, so a
+tablet that runs from `omarchy` goes through `ramdump` first:
 
-1. Write the image to the other root partition (`omarchy`, or `ramdump` if that is the
-   one you are not booted from) and grow its filesystem to the partition size.
-2. Carry over the Wi-Fi profile and the SSH key, then run `tools/personalize.sh` and
-   `tools/apply-overlay.sh`.
-3. Build `init_boot` with the root order you want (`LOA_ROOT_PARTS`, section 3), write
-   it to the active slot's `init_boot` partition from Linux, and reboot.
-4. Keep the old root as the rollback until the checks pass.
+1. Back up what you need, and keep a dump of the current `init_boot_<slot>`.
+2. Write the image to the root partition you are **not** booted from
+   (`zstd -dc IMAGE | dd of=/dev/disk/by-partlabel/PART bs=16M conv=fsync`), compare
+   the sha256 of what was written with the decompressed image, run `e2fsck -f` and
+   `resize2fs` on it.
+3. Mount it and copy in root's `authorized_keys`, `/usr/lib/loa/android-props.tar.gz`
+   and the Wi-Fi profiles from `/etc/NetworkManager/system-connections` (a CI image
+   has none of them).
+4. Build `init_boot` with that partition first (`LOA_ROOT_PARTS`, section 3), write it
+   to `/dev/disk/by-partlabel/init_boot_<slot>` with `dd`, read it back, and reboot.
+5. If the target was `ramdump`: repeat steps 2 to 4 from there for `omarchy`, with the
+   normal `init_boot`.
+6. On the new root: `tools/personalize.sh`, `tools/apply-overlay.sh`, set the password,
+   reboot, check. The other partition keeps a root to fall back to: stage 1 mounts it
+   when `omarchy` doesn't mount.
 
 ## 5. Personalize (native Omarchy)
 
