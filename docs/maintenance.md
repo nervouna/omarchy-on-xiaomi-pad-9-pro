@@ -27,21 +27,17 @@ What the tablet adds (all in `rootfs-overlay/`):
 |---|---|
 | `IgnorePkg = aquamarine` + `/etc/pacman.d/hooks/10-loa-aquamarine-guard.hook` | Our Aquamarine is patched (below). When a new Hyprland needs a newer Aquamarine, pacman would install the stock one under `--noconfirm`; the guard aborts the whole transaction instead, with a message. Rebuild ours, install it with `LOA_AQUAMARINE=1 pacman -U ...`, update again |
 | `/etc/pacman.d/hooks/95-loa-omarchy.hook` -> `/usr/lib/loa/omarchy-post-upgrade.sh` | After every Omarchy package change: re-applies `/usr/share/loa/omarchy/patches/*.patch` (a patch that stops applying is reported: check whether upstream fixed it), marks the migrations in `/usr/share/loa/omarchy/migrations-skip` as done, and lists pending migrations that touch boot, kernel modules, sshd or groups. Omarchy detects this tablet as `aarch64-qualcomm` (a Snapdragon laptop), so read those before they run |
-| `/usr/lib/loa/omarchy-menu-audit.py` (run by the post-upgrade script and apply-overlay) + `/usr/share/loa/omarchy/menu-hide` | Omarchy 4.0.6's menu offers its x86_64 catalogue on ARM. The audit reads each Install entry and the scripts it calls, checks their packages with `pacman -Sp` (AUR fallbacks: the AUR's `arch`), and hides the entries that can't work by setting `when` to `false` (original kept in `loaWhen`, the reason in `loaHidden`). `menu-hide` adds what no package check sees (no kernel headers for DKMS, no KVM). Hidden entries come back by themselves once their packages resolve. Run it without `--apply` for a report |
+| `/usr/lib/loa/omarchy-menu-audit.py` (run by the post-upgrade script and apply-overlay) + `/usr/share/loa/omarchy/menu-hide` | Omarchy 4.0.6's menu offers its x86_64 catalogue on ARM. The audit reads each Install entry and the scripts it calls, checks their packages with `pacman -Sp` (AUR fallbacks: the AUR's `arch`), and hides the entries that can't work by setting `when` to `false` (original kept in `loaWhen`, the reason in `loaHidden`). `menu-hide` adds what no package check sees (no kernel headers for DKMS). Hidden entries come back by themselves once their packages resolve. Run it without `--apply` for a report |
 | `/etc/pacman.d/hooks/30-loa-chrome-sandbox.hook` -> `/usr/lib/loa/chrome-sandbox.sh` | The kernel has no user namespaces, so Chromium and Electron apps need their `chrome-sandbox` setuid root and abort otherwise. Fixes any that a package installs without the bit, and hands a package tree owned by a stray uid to root |
 | plymouth units masked (`/etc/systemd/system/plymouth-*.service` -> /dev/null) | `omarchy-settings` depends on plymouth; with no initramfs or LUKS here it would only take DRM master from the stage 1 splash and Hyprland at boot and shutdown |
 | `/usr/lib/loa/setup-omarchy-repo.sh` + the user hook `~/.config/omarchy/hooks/pre-refresh-pacman.d/loa-device` | Omarchy 4.0.6's `omarchy-refresh-pacman` (Update > Channel, reinstall) copies its **x86_64** template on ARM (no `[alarm]`, `[multilib]`); the hook puts back the aarch64 channel and `IgnorePkg` before it upgrades |
 
 The post-upgrade script only notices a patch that stops applying. A patch whose
-upstream fix leaves the patched lines alone keeps applying, so drop these by hand:
-
-- `0006-shell-let-cloned-menus-see-their-kinds-through-the-panel-model.patch`:
-  once Omarchy 4.5 is installed (fixed there by omacom/omarchy#13439). It only
-  matters while a cloned menu plugin is enabled.
-
-`0007` (font-set) and `0008` (restart-shell) are backports of fixes in Omarchy 4.5;
-neither applies to v4.5.0-rc1, so the post-upgrade script reports them once 4.5
-lands. Delete them then.
+upstream fix leaves the patched lines alone keeps applying, so drop such a patch
+by hand once its fix is installed: delete the file and add its path to the
+"dropped patches" list in `tools/overlay-install.sh`, which takes the change out
+of the installed Omarchy files again and removes the patch from the tablets.
+`0006`, `0007` and `0008` went that way with Omarchy 4.5 (2026-11-11).
 
 `0009` (bluetooth-power) is ours: Omarchy 4.5 turns Bluetooth off with
 `rfkill block bluetooth`, which also blocks the chip's `bt_power` switch and kills
@@ -345,9 +341,9 @@ boot, or build locally for an image that has them.
 
 The job fails when the build log reports an Omarchy patch that no longer
 applies (`LoA: WARNING: <patch> no longer applies`), except the patches listed
-in `EXPECTED_STALE_PATCHES` at the top of the workflow (now `0007` and `0008`,
-see above). When you delete a stale patch, remove it from that list too; when an
-Omarchy update breaks another one, fix or drop the patch.
+in `EXPECTED_STALE_PATCHES` at the top of the workflow (empty now). When an
+Omarchy update breaks a patch, fix or drop the patch; list it there only while
+the tablets still need it on an older Omarchy.
 
 ## Backups
 

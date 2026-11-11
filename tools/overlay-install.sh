@@ -76,6 +76,31 @@ PY
     fi
 fi
 
+# 4c. Omarchy patches dropped from the overlay (fixed in Omarchy 4.5). A dropped
+# patch that is still applied is taken out again first, or the installed file
+# would keep our change until the next Omarchy package update. An install older
+# than 4.5 (or the copied tree, which has no package) still needs them: there
+# they stay until it is updated.
+ov=$(pacman -Q omarchy 2>/dev/null | cut -d' ' -f2)
+for t in /usr/share/loa/omarchy/patches/0006-shell-let-cloned-menus-see-their-kinds-through-the-panel-model.patch \
+         /usr/share/loa/omarchy/patches/0007-font-set-restore-the-notification-glyph-and-keep-pgrep-quiet.patch \
+         /usr/share/loa/omarchy/patches/0008-restart-shell-wait-for-the-notification-service.patch; do
+    [ -e $t ] || continue
+    if [ -z "$ov" ] || [ "$(vercmp "$ov" 4.5.0)" -lt 0 ]; then
+        echo "kept $t (Omarchy ${ov:-without a package} still needs it; update to 4.5 first)"; continue
+    fi
+    n=$((n + 1)); echo "remove dropped $t"
+    [ $MODE = apply ] || continue
+    for base in /usr/share/omarchy /usr; do
+        if patch -d $base -p1 -s -f --fuzz=0 -R --dry-run < $t >/dev/null 2>&1; then
+            patch -d $base -p1 -s -f --fuzz=0 -R --no-backup-if-mismatch -r - < $t >/dev/null 2>&1 &&
+                echo "reverted $(basename $t) in $base"
+            break
+        fi
+    done
+    backup $t; rm -f $t
+done
+
 # 4a. Legacy system files dropped from the overlay.
 for t in /usr/share/loa/X11/Xresources /usr/lib/loa/loa-xresources.sh; do
     [ -e $t ] || continue
