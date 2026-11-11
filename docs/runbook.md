@@ -15,7 +15,7 @@ exactly that build.
 - A Mac with Android platform-tools (`fastboot`, `adb`), `zstd`, `lz4`,
   `python3` (`brew install android-platform-tools zstd lz4`). `zig` and the
   NDK only matter if you rebuild the helpers (`tools/build.sh`).
-- `images/init_boot-stock-OS4.0.5.0.img` (sha256 `61427d71…`): the
+- `images/init_boot-stock-OS4.0.5.0.img` (sha256 `61427d7175377924229d560cb0b046110ee98b9c4cb5e23c309a9b829488bc0b`): the
   `init_boot.img` from the official fastboot ROM of that build
   (`tools/fetch-stock-init-boot.sh ROM.tgz` extracts it). Without that file, section 3
   can build from a dump of an `init_boot` that holds our image.
