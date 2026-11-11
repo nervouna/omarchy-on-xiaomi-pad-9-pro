@@ -32,7 +32,7 @@ jobs:
       TAG: ${{ inputs.tag }}
       SHA256: ${{ inputs.sha256 }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Check the inputs
         run: |
@@ -47,7 +47,7 @@ jobs:
             { echo "::error::$TAG is not a pre-release"; exit 1; }
           gh release list --limit 1000 --json tagName,isLatest --jq '.[] | select(.isLatest) | .tagName' > "$RUNNER_TEMP/latest.txt"
           echo "latest release: $(cat "$RUNNER_TEMP/latest.txt")"
-          tools/check-update-tag.sh "$TAG" --skip-ancestry --releases "$RUNNER_TEMP/latest.txt"
+          tools/check-update-tag.sh "${TAG#update-}" --existing "$RUNNER_TEMP/latest.txt"
 
       - name: Check the assets are the tested bytes and signed
         run: |

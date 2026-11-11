@@ -1,5 +1,5 @@
 #!/bin/sh
-# Test for tools/check-update-tag.sh; runs on macOS and Linux, needs only git.
+# Test for tools/check-update-tag.sh; runs on macOS and Linux.
 #   tools/test-check-update-tag.sh
 set -u
 D=$(cd "$(dirname "$0")" && pwd)
@@ -20,32 +20,34 @@ bad() {  # NAME REASON ARGS...: must exit non-zero and mention REASON
     n=$((n + 1)); echo "PASS: $name"
 }
 
-R=$W/repo
-git init -q -b main "$R"
-git -C "$R" -c user.name=t -c user.email=t@t commit -q --allow-empty -m one
-ON_MAIN=$(git -C "$R" rev-parse HEAD)
-git -C "$R" switch -q -c side
-git -C "$R" -c user.name=t -c user.email=t@t commit -q --allow-empty -m side
-OFF_MAIN=$(git -C "$R" rev-parse HEAD)
-git -C "$R" switch -q main
-
-printf '%s\n' update-20261110-1 update-20261111-2 v0.9 > "$W/rel"
+# Newest first, as `gh release list` returns them; v0.9 is not an update tag.
+printf '%s\n' update-20261111-2 update-20261110-1 v0.9 > "$W/rel"
+printf '%s\n' update-20261110-1 > "$W/tags"
 : > "$W/none"
+# A withdrawn release keeps its git tag: only the tag list knows version 20261113-4.
+printf '%s\n' update-20261113-4 update-20261111-2 > "$W/tags2"
+printf '%s\n' update-20261112-2 update-20261112-10 > "$W/nums"
 
-ok "accepts a new tag on a main commit" update-20261112-1 --commit "$ON_MAIN" --repo "$R" --main main --releases "$W/rel"
-ok "accepts with no release yet" update-20261112-1 --commit "$ON_MAIN" --repo "$R" --main main --releases "$W/none"
-ok "accepts the next N of the same day" update-20261111-3 --commit "$ON_MAIN" --repo "$R" --main main --releases "$W/rel"
-ok "N compares as a number" update-20261111-10 --commit "$ON_MAIN" --repo "$R" --main main --releases "$W/rel"
-bad "rejects a dashed date" "update-YYYYMMDD-N" update-2026-11-12 --commit "$ON_MAIN" --repo "$R" --main main --releases "$W/none"
-bad "rejects a tag without N" "update-YYYYMMDD-N" update-20261112 --commit "$ON_MAIN" --repo "$R" --main main --releases "$W/none"
-bad "rejects v1" "update-YYYYMMDD-N" v1 --commit "$ON_MAIN" --repo "$R" --main main --releases "$W/none"
-bad "rejects a two-line tag" "update-YYYYMMDD-N" "update-20261112-1
-x" --commit "$ON_MAIN" --repo "$R" --main main --releases "$W/none"
-bad "rejects a commit not on main" "not on main" update-20261112-1 --commit "$OFF_MAIN" --repo "$R" --main main --releases "$W/none"
-bad "rejects an equal version" "not newer" update-20261111-2 --commit "$ON_MAIN" --repo "$R" --main main --releases "$W/rel"
-bad "rejects an older N" "not newer" update-20261111-1 --commit "$ON_MAIN" --repo "$R" --main main --releases "$W/rel"
-bad "rejects an older date" "not newer" update-20261109-9 --commit "$ON_MAIN" --repo "$R" --main main --releases "$W/rel"
-ok "skips the ancestry check on request" update-20261112-1 --skip-ancestry --releases "$W/none"
-bad "needs a release list" "releases" update-20261112-1 --commit "$ON_MAIN" --repo "$R" --main main
-bad "needs a commit unless skipped" "commit" update-20261112-1 --repo "$R" --main main --releases "$W/none"
+ok "accepts a new date" 20261112-1 --existing "$W/rel"
+ok "accepts with nothing released yet" 20261112-1 --existing "$W/none"
+ok "accepts the next N of the same day" 20261111-3 --existing "$W/rel"
+bad "rejects an equal version" "not newer" 20261111-2 --existing "$W/rel"
+bad "rejects an older N" "not newer" 20261110-0 --existing "$W/rel"
+bad "rejects an older date" "not newer" 20261109-9 --existing "$W/rel"
+bad "N compares as a number, not text" "not newer" 20261112-9 --existing "$W/nums"
+ok "N compares as a number: 11 > 10" 20261112-11 --existing "$W/nums"
+bad "a tag without a release blocks (union)" "not newer" 20261113-3 --existing "$W/rel" --existing "$W/tags2"
+bad "a release without a tag blocks (union)" "not newer" 20261111-2 --existing "$W/tags" --existing "$W/rel"
+ok "the union allows a version newer than both" 20261113-5 --existing "$W/rel" --existing "$W/tags2"
+bad "rejects a dashed date" "YYYYMMDD-N" 2026-11-12 --existing "$W/none"
+bad "rejects a version without N" "YYYYMMDD-N" 20261112 --existing "$W/none"
+bad "rejects a tag name" "YYYYMMDD-N" update-20261112-1 --existing "$W/none"
+bad "rejects v1" "YYYYMMDD-N" v1 --existing "$W/none"
+bad "rejects an empty version" "YYYYMMDD-N" "" --existing "$W/none"
+bad "rejects a two-line version" "YYYYMMDD-N" "20261112-1
+x" --existing "$W/none"
+bad "rejects a trailing newline-injected line" "YYYYMMDD-N" "x
+20261112-1" --existing "$W/none"
+bad "needs a list" "required" 20261112-1
+bad "rejects a missing list file" "needs a file" 20261112-1 --existing "$W/missing"
 echo "check-update-tag: $n tests passed"

@@ -86,44 +86,58 @@ tree, so no git-ignored local input gets in), the patched Aquamarine package whe
 given, and `MANIFEST` (version, commit, sha256 of every member). Versions compare
 as (date, N). The signature is `ssh-keygen -Y sign`, namespace `loa-update`; the
 private key exists only as the secret `LOA_UPDATE_SIGNING_KEY` of the GitHub
-environment `update-signing`, which only tags `update-*` may deploy to; the
+environment `update-signing`, which only the branch `main` may deploy to; the
 public one is `/usr/share/loa/update/allowed_signers`.
 
 It does **not** hold Mesa-KGSL or `init_boot`: those stay wired and Fastboot-only.
 
-**Cutting a release.** Tag a commit of `main` and push the tag:
+**Cutting a release.** From `main`, by hand:
 
 ```
-git tag update-YYYYMMDD-N <commit-on-main> && git push origin update-YYYYMMDD-N
+gh workflow run release-update.yml --ref main -f version=YYYYMMDD-N
 ```
 
-`N` counts the releases of that day from 1. `.github/workflows/release-update.yml`
-then runs two jobs. `build` (no secret) runs `tools/check-update-tag.sh`: the tag
-must be exactly `update-YYYYMMDD-N`, its commit an ancestor of `origin/main`, and
-its version newer than every existing release (compared as (date, N)). Then it
-builds the unsigned overlay-only bundle with `tools/make-update-bundle.sh` and
-hands it on as an artifact. `release` is the only job with the environment: it
-checks out no code, signs the tar (`ssh-keygen -Y sign -n loa-update`, key in a
-mode-600 file that an `always()` step removes), verifies the signature against
-the tagged commit's `allowed_signers`, and creates a **pre-release** with
-`loa-update.tar` and `loa-update.tar.sig`. The release notes hold the version,
-the commit, the sha256 of `loa-update.tar` and the canary checklist. A tag on a
-commit that is not on `main` fails in `build`; no signing job runs and nothing is
-published. The test of the gate is `tools/test-check-update-tag.sh` (runs on
-macOS and Linux). The Aquamarine package is not bundled yet (#45); the workflow
-marks the place and the version rule it needs.
+or Actions > Release update > Run workflow on `main`. `N` is one more than the
+highest N ever used that day, and **a version is never reused**, released or
+withdrawn. Nobody pushes `update-*` tags by hand: the workflow creates the tag.
+`.github/workflows/release-update.yml` runs two jobs, both only on `main`.
+`build` (no secret) checks out the `main` commit the run started on and runs
+`tools/check-update-tag.sh`: the version must be exactly `YYYYMMDD-N` and newer,
+as (date, N) with N a number, than every existing `update-*` git tag **and**
+every release (the union, so a withdrawn release whose tag was kept still blocks
+its version). Then it builds the unsigned overlay-only bundle with
+`tools/make-update-bundle.sh` and hands it on as an artifact. `release` is the
+only job with the environment `update-signing`: it checks out no code and runs no
+repository script. It re-validates the version, refuses when the tag
+`update-<version>` already exists, checks the bundle's `MANIFEST` against the
+version and the commit, signs the tar (`ssh-keygen -Y sign -n loa-update`, key in
+a mode-600 file that an `always()` step removes), verifies the signature against
+`allowed_signers` at that commit, and creates the tag and a **pre-release**
+(`gh release create update-<version> ... --target <commit> --prerelease
+--latest=false`) with `loa-update.tar` and `loa-update.tar.sig`. The release notes
+hold the version, the commit, the sha256 of `loa-update.tar` and the canary
+checklist. The test of the version gate is `tools/test-check-update-tag.sh`
+(runs on macOS and Linux, and in the `lint` job). The Aquamarine package is not
+bundled yet (#45); the workflow marks the place and the version rule it needs.
+
+What stands between a commit and the signing key: the environment `update-signing`
+admits only the branch `main` (Settings > Environments > update-signing >
+Deployment branches and tags; GitHub enforces it whatever the workflow file on
+another ref says), and `main` takes changes only through pull requests with the
+`ci` check. The `if: github.ref == 'refs/heads/main'` on the jobs is a
+convenience, not the gate.
 
 **Canary, then promote.** `releases/latest` ignores a pre-release, so no tablet
 gets it by itself. On the 8 GB tablet:
 
 1. `sudo loa-update --tag <tag>` over Wi-Fi.
-2. Reboot; desktop, touch, audio and Wi-Fi work.
-3. After 10 minutes on the desktop the marker is gone (`/var/lib/loa-update/pending` does not exist).
-4. `sudo loa-update check --tag <tag>` passes (it verifies the release against its own installed `allowed_signers`, so a release that locks itself out fails here).
-5. `sha256sum /var/lib/loa-update/cache/loa-update.tar` equals the sha256 in the release notes.
+2. At once, before the reboot and before any `check` or `--diff` (they download again): `sha256sum /var/lib/loa-update/cache/loa-update.tar` equals the sha256 in the release notes.
+3. Reboot; desktop, touch, audio and Wi-Fi work.
+4. After 10 minutes on the desktop the marker is gone (`/var/lib/loa-update/pending` does not exist).
+5. `sudo loa-update check --tag <tag>` passes (it verifies the release against its own installed `allowed_signers`, so a release that locks itself out fails here).
 
 Then Actions > Promote update > Run workflow (on `main`) with the tag and that
-sha256, or `gh workflow run promote-update.yml -f tag=<tag> -f sha256=<sha256>`.
+sha256, or `gh workflow run promote-update.yml --ref main -f tag=<tag> -f sha256=<sha256>`.
 `promote-update.yml` downloads the two assets, fails unless the tar's sha256
 equals the input, the signature verifies against `main`'s `allowed_signers`, the
 release is a pre-release and no newer version is already latest; then it clears
@@ -131,10 +145,11 @@ the pre-release flag and marks it latest. It uploads nothing, so the promoted
 bytes are the tested bytes.
 
 **Withdrawing a bad release.** `gh release edit <tag> --prerelease` (back to a
-pre-release) or `gh release delete <tag> --cleanup-tag`: `releases/latest` then
-resolves to the previous release. A tablet that already installed it goes back
-with `sudo loa-update rollback` while it is still within its trial; otherwise
-ship a newer release (versions only go up).
+pre-release, if it was promoted) or `gh release delete <tag>` **without**
+`--cleanup-tag`: the tag stays, so the version is never reused, and
+`releases/latest` resolves to the previous release. A tablet that already
+installed it goes back with `sudo loa-update rollback` while it is still within
+its trial; otherwise ship a newer release (versions only go up).
 
 **What `loa-update` does.** Before it writes anything: the signature over the
 tar, no member that is absolute, contains `..` or is not a file, directory or
