@@ -21,6 +21,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - variant: baseline
+            config: ""
+          - variant: userns
+            config: "CONFIG_USER_NS=y"
+          - variant: pidns
+            config: "CONFIG_PID_NS=y"
           - variant: ipcns
             config: "CONFIG_POSIX_MQUEUE=y CONFIG_IPC_NS=y"
           - variant: sysvipc
