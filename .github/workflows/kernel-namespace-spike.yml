@@ -1,0 +1,94 @@
+# Spike: can the GKI kernel be rebuilt with user/PID/IPC namespaces and still
+# load the tablet's stock vendor modules? Builds android16-6.12-2026-03 (the
+# branch the stock 6.12.69 kernel comes from) with the official Kleaf toolchain,
+# once unchanged and once per option, and uploads each build's symbol CRCs.
+# Nothing here touches a tablet; the CRCs are compared offline.
+name: Kernel namespace spike
+
+on:
+  push:
+    branches: [spike/kernel-namespaces]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 330
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variant: baseline
+            config: ""
+          - variant: userns
+            config: "CONFIG_USER_NS=y"
+          - variant: pidns
+            config: "CONFIG_PID_NS=y"
+          - variant: ipcns
+            config: "CONFIG_POSIX_MQUEUE=y CONFIG_IPC_NS=y"
+          - variant: sysvipc
+            config: "CONFIG_SYSVIPC=y"
+          - variant: all
+            config: "CONFIG_USER_NS=y CONFIG_PID_NS=y CONFIG_POSIX_MQUEUE=y CONFIG_IPC_NS=y"
+    env:
+      MANIFEST_BRANCH: common-android16-6.12-2026-03
+      KCONFIG: ${{ matrix.config }}
+    steps:
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/local/lib/android /opt/hostedtoolcache /usr/share/dotnet \
+            /opt/ghc /usr/local/.ghcup /usr/share/swift /usr/local/share/boost
+          sudo docker image prune -af >/dev/null 2>&1 || true
+          df -h /
+
+      - name: Fetch the kernel tree
+        run: |
+          mkdir -p ~/bin k
+          curl -fsSL --retry 5 https://storage.googleapis.com/git-repo-downloads/repo -o ~/bin/repo
+          chmod +x ~/bin/repo
+          cd k
+          ~/bin/repo init -q --depth=1 -u https://android.googlesource.com/kernel/manifest -b "$MANIFEST_BRANCH"
+          for i in 1 2 3; do
+            ~/bin/repo sync -q -c --no-tags --no-clone-bundle -j4 && break
+            [ "$i" = 3 ] && exit 1
+            sleep 60
+          done
+          git -C common log -1 --format='common: %H %s'
+          sed -n 's/^\(VERSION\|PATCHLEVEL\|SUBLEVEL\) = /\1=/p' common/Makefile | tr '\n' ' '
+          df -h /
+
+      - name: Build
+        working-directory: k
+        run: |
+          flag=
+          if [ -n "$KCONFIG" ]; then
+            mkdir spike
+            echo 'exports_files(["spike.fragment"])' > spike/BUILD.bazel
+            printf '%s\n' $KCONFIG > spike/spike.fragment
+            cat spike/spike.fragment
+            flag=--defconfig_fragment=//spike:spike.fragment
+          fi
+          tools/bazel run --config=fast $flag //common:kernel_aarch64_dist -- \
+            --destdir="$GITHUB_WORKSPACE/dist"
+
+      - name: Collect
+        if: always()
+        run: |
+          mkdir -p out
+          ls -la dist || exit 0
+          k/common/scripts/extract-ikconfig dist/Image > out/dot-config || true
+          grep -E 'CONFIG_(USER_NS|PID_NS|IPC_NS|SYSVIPC|POSIX_MQUEUE|NAMESPACES)\b' out/dot-config || true
+          (cd k && ~/bin/repo manifest -r -o "$GITHUB_WORKSPACE/out/manifest.xml") || true
+          find dist -maxdepth 1 -type f -size -200M ! -name 'vmlinux' ! -name '*unstripped*' \
+            -exec cp {} out/ \;
+          du -sh out
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: kernel-${{ matrix.variant }}
+          path: out
+          retention-days: 30
