@@ -21,12 +21,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - variant: baseline
-            config: ""
-          - variant: userns
-            config: "CONFIG_USER_NS=y"
-          - variant: pidns
-            config: "CONFIG_PID_NS=y"
           - variant: ipcns
             config: "CONFIG_POSIX_MQUEUE=y CONFIG_IPC_NS=y"
           - variant: sysvipc
@@ -71,6 +65,14 @@ jobs:
             cat spike/spike.fragment
             flag=--defconfig_fragment=//spike:spike.fragment
           fi
+          # With IPC namespaces on, rust_binder.ko (a module) calls two symbols
+          # the kernel does not export: export them and keep them from trimming.
+          case $KCONFIG in *POSIX_MQUEUE*|*SYSVIPC*)
+            echo 'EXPORT_SYMBOL_GPL(put_ipc_ns);' >> common/ipc/namespace.c
+            echo 'EXPORT_SYMBOL_GPL(init_ipc_ns);' >> common/ipc/msgutil.c
+            printf '  %s\n' init_ipc_ns put_ipc_ns >> common/gki/aarch64/symbols/base
+            git -C common diff --stat ;;
+          esac
           tools/bazel run --config=fast $flag //common:kernel_aarch64_dist -- \
             --destdir="$GITHUB_WORKSPACE/dist"
 
@@ -84,7 +86,16 @@ jobs:
           (cd k && ~/bin/repo manifest -r -o "$GITHUB_WORKSPACE/out/manifest.xml") || true
           find dist -maxdepth 1 -type f -size -200M ! -name 'vmlinux' ! -name '*unstripped*' \
             -exec cp {} out/ \;
-          du -sh out
+          mkdir -p small
+          cp out/*.symvers out/dot-config out/manifest.xml out/abi_symbollist* small/ || true
+          du -sh out small
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: symvers-${{ matrix.variant }}
+          path: small
+          retention-days: 30
 
       - uses: actions/upload-artifact@v4
         if: always()
