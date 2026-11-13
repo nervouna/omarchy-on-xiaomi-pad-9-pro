@@ -327,7 +327,7 @@ check that `main`'s branch protection requires, so pull requests land with
 `gh pr merge --auto --squash` once it is green; direct pushes to `main` are
 rejected.
 
-The job checks the image (`sha256sum -c`, `zstd -t`, a 16 GiB size, `e2fsck -fn`
+The job checks the image (`sha256sum -c`, a full decompression, a 16 GiB size, `e2fsck -fn`
 on the decompressed file) and uploads the artifact `omarchy-scratch-image` for
 14 days: `omarchy-scratch-DATE.img.zst` and its `.sha256`. To get it:
 
