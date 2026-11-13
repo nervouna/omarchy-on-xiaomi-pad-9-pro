@@ -27,7 +27,6 @@ PS = "/sys/class/power_supply"
 IIO = "/sys/bus/iio/devices/iio:device0"
 KGSL = "/sys/class/kgsl/kgsl-3d0"
 QSTATS = "/sys/kernel/debug/qcom_stats"
-CPUSS = "/sys/kernel/debug/qcom_cpuss_sleep_stats"
 EM = "/sys/kernel/debug/energy_model"
 SUBSYS = ("apss", "cxsd", "aosd", "ddr", "adsp", "cdsp", "wpss", "modem")
 ZONES = ("battery", "quiet_therm", "display_therm", "wifi_therm", "charger_therm0", "cpu_therm", "ddr")
@@ -86,7 +85,7 @@ def kv_table(path):
 
 
 def counters():
-    c = {"cpu": cpu_times(), "freq": {}, "idle": {}, "soc": {}, "cpuss": {}, "net": {}, "proc": {}}
+    c = {"cpu": cpu_times(), "freq": {}, "idle": {}, "soc": {}, "net": {}, "proc": {}}
     for pol in glob.glob("/sys/devices/system/cpu/cpufreq/policy*"):
         c["freq"][os.path.basename(pol)] = kv_table(f"{pol}/stats/time_in_state")  # 10 ms units
     for st in glob.glob("/sys/devices/system/cpu/cpu[0-9]*/cpuidle/state*"):
@@ -97,10 +96,8 @@ def counters():
         if t:
             m = dict(re.findall(r"(Count|Accumulated Duration): (\d+)", t))
             c["soc"][s] = (int(m.get("Count", 0)), int(m.get("Accumulated Duration", 0)))
-    for f in glob.glob(f"{CPUSS}/*/*"):
-        v = num(f)
-        if v is not None:
-            c["cpuss"][f"{os.path.basename(os.path.dirname(f))}.{os.path.basename(f)}"] = v
+    # /sys/kernel/debug/qcom_cpuss_sleep_stats is left alone on purpose: a read
+    # of pcpu*/C4_Count can spin in the kernel forever, and SIGKILL does not end it.
     g = (rd(f"{KGSL}/gpu_clock_stats") or "").split()
     fr = (rd(f"{KGSL}/gpu_available_frequencies") or "").split()
     c["gpu"] = dict(zip(fr, (int(x) for x in g))) if len(g) == len(fr) else {}
