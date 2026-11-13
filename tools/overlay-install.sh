@@ -76,6 +76,24 @@ PY
     fi
 fi
 
+# 3b. Omarchy's idle lock off, once. Its shell locks after idle.lock seconds
+# (default 300, the same moment hypridle switches the screen off); the lock ends
+# the screensaver, the shell takes that for activity and runs omarchy-system-wake,
+# which lights the screen again, every 5 minutes for as long as the tablet is
+# idle. The tablet has no lock to speak of (no password, no on-screen keyboard at
+# the lock screen), so the default goes to 0 = disabled. Only the untouched
+# default is changed, and only once (marker): a lock the user sets later stays.
+J=/home/omarchy/.config/omarchy/shell.json
+M=/var/lib/loa/idle-lock-default-off
+if [ -f $J ] && [ ! -e $M ] && [ "$(jq -r '.idle.lock // 300' $J 2>/dev/null)" = 300 ]; then
+    n=$((n + 1)); echo "shell.json: idle.lock 300 -> 0 (Omarchy's idle lock relights the screen)"
+    if [ $MODE = apply ]; then
+        backup $J
+        $U sh -c "jq '.idle.lock = 0' $J > $J.loa && mv $J.loa $J"
+        mkdir -p /var/lib/loa; : > $M
+    fi
+fi
+
 # 4c. Omarchy patches dropped from the overlay (fixed in Omarchy 4.5). A dropped
 # patch that is still applied is taken out again first, or the installed file
 # would keep our change until the next Omarchy package update. An install older
