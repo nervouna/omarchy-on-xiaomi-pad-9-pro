@@ -19,11 +19,7 @@ for f in $(git ls-files); do
             python3 -c 'import sys; compile(open(sys.argv[1], "rb").read(), sys.argv[1], "exec")' "$f" \
                 || { echo "== $f: python syntax"; fail=1; }
             ;;
-        *'/system/bin/sh'*)
-            bash -n "$f" || { echo "== $f: shell syntax"; fail=1; }
-            shellcheck --shell=bash --severity=error "$f" || fail=1
-            ;;
-        *bash*)
+        *'/system/bin/sh'*|*bash*)
             bash -n "$f" || { echo "== $f: shell syntax"; fail=1; }
             shellcheck --shell=bash --severity=error "$f" || fail=1
             ;;

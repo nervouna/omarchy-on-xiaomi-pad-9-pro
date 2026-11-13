@@ -27,6 +27,8 @@ bundle() {  # VERSION DIR KEY [--aquamarine PKG]
 }
 same() { cmp -s "$1" "$2"; }
 marker() { cat $S/pending 2>/dev/null; }
+aqver() { pacman -Q aquamarine | cut -d' ' -f2; }
+commit() { git -c user.name=test -c user.email=test@invalid commit -q "$@"; }
 # A refusal: non-zero exit, the expected reason, and no change anywhere in the
 # root (ctime of every file outside loa-update's cache).
 refuse() {  # NAME REASON ARGS...
@@ -40,12 +42,13 @@ refuse() {  # NAME REASON ARGS...
 }
 # What loa-boot-ok.service does when a boot reaches the desktop.
 okcmd=$(sed -n 's/^ExecStart=//p' $U/loa-boot-ok.service)
+desktop_up() { eval "$okcmd" > /dev/null 2>&1; }
 # The boot check of a later boot: the chroot's boot id never changes, so the
 # boot that applied the update is made to look like an earlier one.
 later_boot() { echo 00000000-0000-0000-0000-000000000000 > $S/pending-boot; }
 # An update that booted, reached the desktop and kept it for 10 minutes.
 boot_ok() {
-    later_boot; lu boot-check && eval "$okcmd" > /dev/null 2>&1 && lu confirm && [ ! -e $S/pending ] ||
+    later_boot; lu boot-check && desktop_up && lu confirm && [ ! -e $S/pending ] ||
         fail "confirming an update as a good boot does"
 }
 last_rollback() { read -r t rv why < $S/last-rollback && echo "$rv $why"; }
@@ -58,14 +61,14 @@ install_script() {
               grep -q 'kill -KILL 0' $W/repo/tools/overlay-install.sh ;;
         fail) sed -i 's/^# 5\. Modes, accounts, units\.$/exit 1\n&/' $W/repo/tools/overlay-install.sh &&
               grep -qx 'exit 1' $W/repo/tools/overlay-install.sh ;;
-    esac && (cd $W/repo && git -c user.name=test -c user.email=test@invalid commit -q --allow-empty -am "install script: $1") > $W/out 2>&1 ||
+    esac && (cd $W/repo && commit --allow-empty -am "install script: $1") > $W/out 2>&1 ||
         fail "building the '$1' install script"
 }
 
 # Throwaway keys and a git copy of the repo for make-update-bundle.sh.
 ssh-keygen -q -t ed25519 -N '' -C test -f $W/k1 && ssh-keygen -q -t ed25519 -N '' -C other -f $W/k2 || fail "ssh-keygen"
 cp -a "$SRC" $W/repo
-(cd $W/repo && git init -q && git add -A && git -c user.name=test -c user.email=test@invalid commit -qm test) > $W/out 2>&1 || fail "git copy of the repo"
+(cd $W/repo && git init -q && git add -A && commit -m test) > $W/out 2>&1 || fail "git copy of the repo"
 
 v=$(cat $S/version 2>/dev/null)
 echo "$v" | grep -Eq '^[0-9]{8}-0$' || fail "the image records its bundle version (got '$v')"
@@ -101,7 +104,7 @@ boot_ok
 # loa-boot-ok on a boot without a marker: the counter is reset, the flag is
 # set, and no marker appears.
 mkdir -p /loa; echo 2 > /loa/boot-attempts; rm -f /run/loa-boot-ok
-eval "$okcmd" > /dev/null 2>&1
+desktop_up
 [ "$(cat /loa/boot-attempts)" = 0 ] && [ -e /run/loa-boot-ok ] && [ ! -e $S/pending ] ||
     fail "loa-boot-ok without a marker resets the counter, sets the flag and creates no marker"
 pass "loa-boot-ok without a marker resets the counter, sets the flag and creates no marker"
@@ -147,7 +150,7 @@ swap_key; lu --file $W/b2/loa-update.tar || fail "applying the bundle for the au
 [ "$(marker)" = applied ] || fail "an update leaves the marker 'applied'"
 refuse "a second update before the first has booted is refused" "not been confirmed" --file $W/g/loa-update.tar
 refuse "a second update is refused with --force too" "not been confirmed" --force --file $W/g/loa-update.tar
-eval "$okcmd" > /dev/null 2>&1
+desktop_up
 [ "$(marker)" = applied ] || fail "loa-boot-ok leaves an update that has not booted yet alone"
 lu boot-check && [ "$(marker)" = applied ] || fail "the boot check in the boot that applied an update leaves it 'applied'"
 pass "the boot check in the boot that applied an update leaves it 'applied'"
@@ -183,21 +186,21 @@ bundle 29990101-3 $W/b3 $W/k1
 swap_key; lu --file $W/b3/loa-update.tar || fail "applying the bundle for loa-boot-ok"
 lu confirm && fail "confirm accepts an update that has not booted"
 [ "$(marker)" = applied ] || fail "a refused confirm leaves the marker 'applied'"
-later_boot; lu boot-check && eval "$okcmd" > /dev/null 2>&1
+later_boot; lu boot-check && desktop_up
 [ "$(marker)" = booted ] || fail "loa-boot-ok marks a tried update 'booted'"
 refuse "a second update while an update is 'booted' (on trial) is refused" "not been confirmed" --file $W/g/loa-update.tar
 lu boot-check && same $F $W/F.before && [ ! -e $S/pending ] && [ "$(last_rollback)" = "29990101-3 booted" ] ||
     fail "a boot that finds 'booted' rolls the update back"
 pass "an update whose boot ended within its 10 minutes is rolled back at the next boot"
 swap_key; lu --file $W/b3/loa-update.tar || fail "applying the bundle for confirm"
-later_boot; lu boot-check && eval "$okcmd" > /dev/null 2>&1 && lu confirm || fail "confirm keeps an update that reached the desktop"
+later_boot; lu boot-check && desktop_up && lu confirm || fail "confirm keeps an update that reached the desktop"
 [ ! -e $S/pending ] && lu boot-check && same $F $W/repo/rootfs-overlay$F && [ "$(cat $S/version)" = 29990101-3 ] ||
     fail "a confirmed update is kept by the next boot check"
 pass "confirm refuses an update that has not booted, and keeps one that reached the desktop"
 
 # 5. Aquamarine: test packages (one placeholder file) that provide what the
 # installed one provides, or a libaquamarine.so the installed Hyprland does not use.
-cur=$(pacman -Q aquamarine | cut -d' ' -f2)
+cur=$(aqver)
 db=/var/lib/pacman/local/aquamarine-$cur/desc
 mkpkg() {  # VERSION OUT PROVIDES...
     ver=$1 out=$2; shift 2; d=$W/pkg-$ver; mkdir -p $d/usr/share/loa-test
@@ -228,9 +231,9 @@ mkpkg "$cur.1" $W/aquamarine-$cur.1-aarch64.pkg.tar.zst $provides
 bundle 29990101-4 $W/b4 $W/k1 --aquamarine $W/aquamarine-$cur.1-aarch64.pkg.tar.zst
 swap_key; lu --file $W/b4/loa-update.tar || fail "applying a bundle with Aquamarine"
 R=$(cat $S/last)
-[ "$(pacman -Q aquamarine | cut -d' ' -f2)" = "$cur.1" ] && [ ! -e "$L" ] || fail "the bundled Aquamarine is installed (and $L is gone)"
+[ "$(aqver)" = "$cur.1" ] && [ ! -e "$L" ] || fail "the bundled Aquamarine is installed (and $L is gone)"
 lu rollback || fail "rolling back the Aquamarine update"
-[ "$(pacman -Q aquamarine | cut -d' ' -f2)" = "$cur" ] && pacman -Qk aquamarine > /dev/null 2>&1 ||
+[ "$(aqver)" = "$cur" ] && pacman -Qk aquamarine > /dev/null 2>&1 ||
     fail "rollback reinstalls the previous Aquamarine"
 snap > $W/aq.after
 same $W/aq.before $W/aq.after || { diff $W/aq.before $W/aq.after > $W/out; fail "rollback brings back every file of the previous Aquamarine as it was"; }
@@ -241,7 +244,7 @@ pass "rollback brings back every file of the previous Aquamarine as it was, from
 mkpkg "$cur.2" $W/aquamarine-$cur.2-aarch64.pkg.tar.zst "libaquamarine.so=0-64"
 bundle 29990101-6 $W/b6 $W/k1 --aquamarine $W/aquamarine-$cur.2-aarch64.pkg.tar.zst
 swap_key; lu --file $W/b6/loa-update.tar || fail "applying a bundle with a mismatched Aquamarine"
-[ "$(pacman -Q aquamarine | cut -d' ' -f2)" = "$cur" ] && [ -f $S/aquamarine/aquamarine-$cur.2-aarch64.pkg.tar.zst ] &&
+[ "$(aqver)" = "$cur" ] && [ -f $S/aquamarine/aquamarine-$cur.2-aarch64.pkg.tar.zst ] &&
     grep -q "not installing Aquamarine" $W/out || fail "a mismatched Aquamarine is kept, not installed"
 pass "a bundled Aquamarine whose libaquamarine.so Hyprland does not use is kept, not installed"
 boot_ok
@@ -353,7 +356,7 @@ bc=$(sed -n 's/^ExecStart=//p' $ru)
 [ "$bc" = "$PINNED" ] || { echo "$bc" > $W/out; fail "the ExecStart of loa-update-rollback.service is the pinned text"; }
 install_script good
 printf '#!/bin/sh\nexit 1\n' > $W/repo/rootfs-overlay$LU
-(cd $W/repo && git -c user.name=test -c user.email=test@invalid commit -qam "broken loa-update") > $W/out 2>&1 || fail "committing a broken loa-update"
+(cd $W/repo && commit -am "broken loa-update") > $W/out 2>&1 || fail "committing a broken loa-update"
 cp -a $LU $W/lu.before
 echo "-- changed a sixth time" >> $F; cp -a $F $W/F.before6; rm -f $N
 bundle 29990101-12 $W/b12 $W/k1
@@ -397,7 +400,7 @@ pass "the deadline and confirm units wait on /proc/uptime, which counts time in 
 # are on disk before pacman runs, so one boot check removes the stale lock and
 # reinstalls the previous Aquamarine.
 command -v pgrep > /dev/null || fail "pgrep is installed (a rollback removes pacman's lock only when no pacman runs)"
-[ "$(pacman -Q aquamarine | cut -d' ' -f2)" = "$cur" ] || fail "Aquamarine $cur is installed before the Aquamarine kill case"
+[ "$(aqver)" = "$cur" ] || fail "Aquamarine $cur is installed before the Aquamarine kill case"
 mkdir -p $W/pkg-$cur.3; printf 'post_install() { kill -KILL 0; }\npost_upgrade() { kill -KILL 0; }\n' > $W/pkg-$cur.3/.INSTALL
 # shellcheck disable=SC2086
 mkpkg "$cur.3" $W/aquamarine-$cur.3-aarch64.pkg.tar.zst $provides
@@ -405,10 +408,10 @@ bundle 29990102-1 $W/c1 $W/k1 --aquamarine $W/aquamarine-$cur.3-aarch64.pkg.tar.
 vb=$(cat $S/version 2>/dev/null)
 swap_key
 setsid -w "$LU" --file $W/c1/loa-update.tar > $W/out 2>&1 && fail "the apply killed in its Aquamarine step exits 0"
-[ "$(marker)" = applying ] && [ "$(pacman -Q aquamarine | cut -d' ' -f2)" = "$cur.3" ] && [ -e /var/lib/pacman/db.lck ] ||
+[ "$(marker)" = applying ] && [ "$(aqver)" = "$cur.3" ] && [ -e /var/lib/pacman/db.lck ] ||
     fail "the apply was killed inside its Aquamarine step (marker 'applying', Aquamarine $cur.3 installed, pacman's lock left)"
 lu boot-check || fail "the boot check after an apply killed in its Aquamarine step runs"
-[ "$(pacman -Q aquamarine | cut -d' ' -f2)" = "$cur" ] && pacman -Qk aquamarine > /dev/null 2>&1 && [ ! -e $S/pending ] &&
+[ "$(aqver)" = "$cur" ] && pacman -Qk aquamarine > /dev/null 2>&1 && [ ! -e $S/pending ] &&
     [ ! -e /var/lib/pacman/db.lck ] && [ "$(cat $S/version 2>/dev/null)" = "$vb" ] ||
     fail "one boot check after an apply killed in its Aquamarine step reinstalls the previous Aquamarine"
 snap > $W/aq.after2
@@ -417,10 +420,10 @@ pass "an apply killed in its Aquamarine step is rolled back by one boot check, t
 
 # 13. A rollback with a stale pacman lock and no pacman running.
 bundle 29990102-2 $W/c2 $W/k1 --aquamarine $W/aquamarine-$cur.1-aarch64.pkg.tar.zst
-swap_key; lu --file $W/c2/loa-update.tar && [ "$(pacman -Q aquamarine | cut -d' ' -f2)" = "$cur.1" ] ||
+swap_key; lu --file $W/c2/loa-update.tar && [ "$(aqver)" = "$cur.1" ] ||
     fail "applying the Aquamarine bundle for the stale lock"
 touch /var/lib/pacman/db.lck
-lu rollback && [ ! -e /var/lib/pacman/db.lck ] && [ "$(pacman -Q aquamarine | cut -d' ' -f2)" = "$cur" ] && [ ! -e $S/pending ] ||
+lu rollback && [ ! -e /var/lib/pacman/db.lck ] && [ "$(aqver)" = "$cur" ] && [ ! -e $S/pending ] ||
     fail "a rollback with a stale pacman lock and no pacman running succeeds and removes the lock"
 pass "a rollback with a stale pacman lock and no pacman running succeeds and removes the lock"
 
@@ -435,19 +438,19 @@ echo "-- changed for the failing rollback" >> $F; cp -a $F $W/F.c2
 for m in tried booted; do
     swap_key; lu --file $W/c2/loa-update.tar || fail "applying the bundle for a failing rollback from '$m'"
     later_boot; lu boot-check || fail "the boot check marks the update 'tried' ($m)"
-    [ $m = booted ] && eval "$okcmd" > /dev/null 2>&1
+    [ $m = booted ] && desktop_up
     [ "$(marker)" = $m ] || fail "the marker is '$m' before the failing rollback"
     PATH=$W/nopacman:$PATH "$LU" boot-check > $W/out 2>&1 && fail "a boot check whose rollback cannot reinstall Aquamarine exits 0 ($m)"
-    [ "$(marker)" = applying ] && [ -s $S/last ] && [ "$(pacman -Q aquamarine | cut -d' ' -f2)" = "$cur.1" ] ||
+    [ "$(marker)" = applying ] && [ -s $S/last ] && [ "$(aqver)" = "$cur.1" ] ||
         fail "a rollback whose Aquamarine step fails leaves the marker 'applying' and the record ($m)"
-    eval "$okcmd" > /dev/null 2>&1
+    desktop_up
     [ "$(marker)" = applying ] || fail "loa-boot-ok does not promote a failed rollback ($m)"
     lu confirm && fail "confirm accepts a failed rollback ($m)"
     [ "$(marker)" = applying ] || fail "a refused confirm leaves a failed rollback 'applying' ($m)"
     swap_key; lu check --file $S/cache/loa-update.tar
     grep -q "rollback of 29990102-2 ($m) did not complete: reinstalling the previous Aquamarine" $W/out ||
         fail "check shows the failed rollback ($m)"
-    lu boot-check && [ ! -e $S/pending ] && [ "$(pacman -Q aquamarine | cut -d' ' -f2)" = "$cur" ] && same $F $W/F.c2 ||
+    lu boot-check && [ ! -e $S/pending ] && [ "$(aqver)" = "$cur" ] && same $F $W/F.c2 ||
         fail "the next boot check completes a rollback whose Aquamarine step failed ($m)"
 done
 pass "a rollback whose Aquamarine step fails stays 'applying': loa-boot-ok does not promote it, confirm refuses it, check shows it, the next boot check retries it"
@@ -455,7 +458,7 @@ pass "a rollback whose Aquamarine step fails stays 'applying': loa-boot-ok does 
 # 15. confirm waits while another loa-update holds the lock.
 bundle 29990102-3 $W/c3 $W/k1
 swap_key; lu --file $W/c3/loa-update.tar || fail "applying the bundle for confirm under the lock"
-later_boot; lu boot-check && eval "$okcmd" > /dev/null 2>&1 && [ "$(marker)" = booted ] || fail "the update for confirm under the lock is 'booted'"
+later_boot; lu boot-check && desktop_up && [ "$(marker)" = booted ] || fail "the update for confirm under the lock is 'booted'"
 # The holder touches `released` while it still holds the lock, and the test
 # looks for it before it waits for the holder: only a confirm that waited sees it.
 rm -f $W/released

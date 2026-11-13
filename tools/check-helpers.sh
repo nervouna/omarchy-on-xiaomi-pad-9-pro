@@ -13,7 +13,7 @@
 cd "$(dirname "$0")/.." || exit 1
 fail=0
 err() { echo "check-helpers: $*"; fail=1; }
-sha() { sha256sum "$1" 2>/dev/null || shasum -a 256 "$1"; }
+sha() { { sha256sum "$1" 2>/dev/null || shasum -a 256 "$1"; } | cut -d' ' -f1; }
 
 DOC=docs/maintenance.md
 BB_DEB=busybox-static_1.36.1-6ubuntu3.1_arm64.deb
@@ -43,7 +43,7 @@ for f in $elf; do
     n=$((n + 1))
     want=$(echo "$table" | awk -v p="$f" '$1 == p { print $2 }')
     [ -n "$want" ] || { err "$f is not in the table"; continue; }
-    have=$(sha "$f" | cut -d' ' -f1)
+    have=$(sha "$f")
     [ "$have" = "$want" ] || err "$f: sha256 $have, table says $want"
 done
 echo "$table" | while read -r p _; do
@@ -56,14 +56,14 @@ tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
 got=
 for h in $BB_HOSTS; do
     curl -fsSL --retry 2 -o "$tmp/$BB_DEB" "http://$h/$BB_POOL" || continue
-    [ "$(sha "$tmp/$BB_DEB" | cut -d' ' -f1)" = "$BB_DEB_SHA" ] && { got=1; break; }
+    [ "$(sha "$tmp/$BB_DEB")" = "$BB_DEB_SHA" ] && { got=1; break; }
     echo "check-helpers: $h served $BB_DEB with another sha256"
 done
 if [ -n "$got" ]; then
     (cd "$tmp" && ar x "$BB_DEB" && zstd -dc data.tar.zst | tar -x ./usr/bin/busybox) || err "cannot unpack $BB_DEB"
-    want=$(sha "$tmp/usr/bin/busybox" | cut -d' ' -f1)
+    want=$(sha "$tmp/usr/bin/busybox")
     for f in boot/busybox-static rootfs-overlay/usr/lib/loa/busybox; do
-        [ "$(sha "$f" | cut -d' ' -f1)" = "$want" ] || err "$f differs from the busybox in $BB_DEB"
+        [ "$(sha "$f")" = "$want" ] || err "$f differs from the busybox in $BB_DEB"
     done
     echo "check-helpers: busybox matches the binary in $BB_DEB"
 else
