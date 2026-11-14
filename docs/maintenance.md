@@ -393,6 +393,13 @@ Keep backups out of this repository: they hold secrets.
   launch (it counts as activity), so 7.5 min after the last input.
 - The power key and the cover wake the screen without hypridle seeing input, so
   `loa-autobrightness` also ends the dim whenever the panel comes back on.
+- Double tap to wake: `loa-power-key` arms the touch controller's double-tap gesture
+  (`loa-xtouch set 14 1`, read by the driver when the panel goes off) and disarms it
+  while the cover is closed. The gesture arrives as `KEY_WAKEUP` on
+  `NVTCapacitiveTouchScreen` and also wakes s2idle. After an idle screen-off Hyprland
+  takes the key itself (`key_press_enables_dpms`); after a power-key screen-off the
+  touchscreen is disabled in Hyprland, so `loa-power-key` reads the key. A single tap
+  does nothing.
 - To test the battery steps on the USB cable: `touch /run/user/1000/loa-idle-on-battery`.
 - `tools/overlay-install.sh` replaces an installed `hypridle.conf` only if it is still
   a default shipped earlier (step 3d); it applies from the next boot.

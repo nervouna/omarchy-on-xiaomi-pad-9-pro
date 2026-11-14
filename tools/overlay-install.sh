@@ -115,8 +115,9 @@ fi
 C=/home/omarchy/.config/hypr/hypridle.conf
 if [ -f $C ]; then case $(sha256sum $C | cut -d' ' -f1) in
     01dade3a4b24e31bd3f1e942973e25cd19855a528116da881f7643a90eb6cdb0|\
-    2af56065e876c2d187306740496fd26e6c547c16f3ef18db45ccb043ae794490)
-        n=$((n + 1)); echo "hypridle.conf: replace the earlier default (battery: dim at 1 min, off at 2 min)"
+    2af56065e876c2d187306740496fd26e6c547c16f3ef18db45ccb043ae794490|\
+    34f4677cae47bdd40771fdbf14d6b6d3bf47791144c5d0c4fa25242b0cc6d01a)
+        n=$((n + 1)); echo "hypridle.conf: replace the earlier default with the current one"
         if [ $MODE = apply ]; then
             backup $C
             $U cp $S/user-defaults$C $C
