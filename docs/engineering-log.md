@@ -1620,3 +1620,13 @@ nothing. Each fix uncovered the next cause:
   1.44 W armed, spread larger than the difference.
 - Checked on the 8 GB tablet by the owner: double tap after a power-key screen-off on
   the cable, and from s2idle on battery ("resumed: wake irq 421, fired: spi4.0+1").
+- Cover, from the kernel log: closing it suspends the touch with gesture_command 0x00,
+  opening it arms the gesture again (gesture type 4).
+- Standby on battery, two 30 min s2idle blocks each, armed and unarmed: no wake-up from
+  the touch in any block (`xiaomi_tp` interrupt count unchanged; only the RTC check and
+  one qrtr wake right after each suspend). The drain could not be compared: the gauge
+  stayed at 100 % and `charge_counter` did not move for the whole two hours from a full
+  battery. Repeat from below 90 % with #14.
+- Not checked: a double tap from s2idle after an idle screen-off (Hyprland takes the
+  key instead of loa-power-key); closing the cover over a dark panel on the tablet
+  itself (the panel on/off sequence was run by hand).
