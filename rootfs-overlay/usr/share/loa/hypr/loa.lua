@@ -51,7 +51,9 @@ hl.on("hyprland.start", function()
   -- Voxtype is optional until a model has been downloaded; its small manager is a
   -- no-op without a model and replaces the unavailable systemd user unit.
   hl.exec_cmd("omarchy-voxtype-daemon start")
-  -- Screen off after idle (~/.config/hypr/hypridle.conf).
+  -- Idle: dim and screen off (~/.config/hypr/hypridle.conf, /usr/lib/loa/idle.sh).
+  -- A dim request left by a previous session goes first.
+  hl.exec_cmd("/usr/lib/loa/idle.sh undim")
   hl.exec_cmd("hypridle")
 end)
 
