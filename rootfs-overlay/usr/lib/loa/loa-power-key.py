@@ -60,6 +60,7 @@ def as_user(*cmd, wait=True):
     return subprocess.run(argv, env=user_env(), capture_output=True, text=True, timeout=5).stdout
 
 last_on = True  # what we last set; used when Hyprland can't be asked
+poll_at = 0.0    # next time to ask Hyprland whether something else woke the screen
 tap_wake = True  # arm the double-tap gesture for the next screen-off
 
 def arm_tap(on):
@@ -80,8 +81,9 @@ def screen_on():
         return last_on
 
 def set_screen(on):
-    global last_on
+    global last_on, poll_at
     last_on = on
+    poll_at = time.monotonic() + 1.0   # give Hyprland time before asking it
     lua = "true" if on else "false"
     act = "enable" if on else "disable"
     if on:
@@ -100,7 +102,7 @@ def menu():
     print("system menu toggled", flush=True)
 
 def run(dev):
-    global tap_wake, last_on
+    global last_on, poll_at
     print("listening on", dev, flush=True)
     last_on = screen_on()               # a restart may find the screen off
     fd = os.open(dev, os.O_RDONLY)
@@ -122,18 +124,24 @@ def run(dev):
                 tap = os.open(tap_dev, os.O_RDONLY | os.O_NONBLOCK)
             if down is not None:
                 timeout = max(0.0, down + HOLD - time.monotonic())
-            else:
-                timeout = None if (last_on and not lid_closed) else 1.0
+            elif last_on and not lid_closed:
+                timeout = None
+            else:                                      # poll Hyprland once a second
+                timeout = max(0.0, poll_at - time.monotonic())
             fds = [fd] + [f for f in (lid, tap) if f is not None]
             ready = select.select(fds, [], [], timeout)[0]
-            if not ready:
-                if down is not None:
-                    down = None; menu()                # held long enough
-                elif screen_on():
+            # Off a deadline, not the select timeout: touches on the disabled
+            # touchscreen keep the tap fd readable.
+            if down is None and timeout is not None and time.monotonic() >= poll_at:
+                poll_at = time.monotonic() + 1.0
+                if screen_on():
                     if lid_closed and not power_on_while_closed:
                         set_screen(False)              # a key under the cover woke it
                     elif not last_on:
                         set_screen(True)               # woken by another input
+            if not ready:
+                if down is not None:
+                    down = None; menu()                # held long enough
                 continue
             if tap is not None and tap in ready:
                 try:
@@ -153,7 +161,11 @@ def run(dev):
                 if t == EV_SW and c == SW_LID and bool(v) != lid_closed:
                     lid_closed = bool(v); power_on_while_closed = False
                     print("cover", "closed" if lid_closed else "opened", flush=True)
-                    tap_wake = not lid_closed
+                    arm_tap(not lid_closed)
+                    if lid_closed and not screen_on():
+                        # The driver takes the mode only when the panel goes
+                        # off: an armed, dark panel needs one more off.
+                        set_screen(True); time.sleep(1)
                     set_screen(not lid_closed)
             if fd not in ready:
                 continue
