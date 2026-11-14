@@ -195,7 +195,7 @@ systemctl enable loa-mdev loa-modules loa-subsys loa-usb-gadget loa-thp loa-boot
     systemd-timesyncd serial-getty@ttyGS0 NetworkManager loa-logd loa-android loa-pd-mapper loa-audiopd \
     loa-binder loa-servicemanager loa-suspend loa-audiohal loa-audio-relay loa-mic-relay loa-power-key \
     loa-splash-off loa-thermalhal loa-bthal loa-bluetooth bluetooth loa-sscrpcd loa-keyboard \
-    loa-autobrightness loa-sleepd earlyoom loa-zram loa-batterysecret loa-pen systemd-pstore loa-crashdump loa-vendor-import >/dev/null 2>&1
+    loa-autobrightness loa-sleepd earlyoom loa-zram loa-cpufreq loa-batterysecret loa-pen systemd-pstore loa-crashdump loa-vendor-import >/dev/null 2>&1
 # avahi-daemon (mDNS, <hostname>.local): Omarchy's installer enables it; ours
 # doesn't run that installer. On its own: a missing unit fails the whole enable.
 systemctl enable avahi-daemon >/dev/null 2>&1 || echo "avahi-daemon not installed: no <hostname>.local"
