@@ -1596,3 +1596,27 @@ nothing. Each fix uncovered the next cause:
   start. Restarting hypridle for a test while the tablet is already idle lets the
   screensaver start first, and its launch resets hypridle's timers.
 - Not done: a run on battery with loa-powerlog; the 8 GB tablet.
+
+### 2026-11-14: double tap to wake (#19)
+
+- The touch controller (NT36536E, TDDI) scans for a double tap with the panel off when
+  xiaomi-touch mode 14 (Touch_Doubletap_Mode) is 1: `loa-xtouch set 14 1`. The driver
+  reads the mode in `nvt_ts_suspend` ("Gesture mode on, Enable doubletap gesture"), and
+  the display driver then keeps the panel rail up ("mi tddi gesture flag power off keep
+  power on"). `/proc/xm_htc_gesture_dbclk` reads 1 while armed.
+- A double tap is logged as "gesture_id = 15 / Gesture : Double Click." and arrives as
+  `KEY_WAKEUP` (143) on `NVTCapacitiveTouchScreen`. From s2idle it wakes through
+  irq 421 `xiaomi_tp` (wakeup source `spi4.0`). A single tap does nothing.
+- After an idle screen-off Hyprland takes the key (`key_press_enables_dpms`). After a
+  power-key screen-off nothing happened: loa-power-key disables the touchscreen in
+  Hyprland, so the key was dropped. loa-power-key now reads the device itself while it
+  holds the screen off.
+- Pitfall: the mode is only taken when the panel goes off. Changing it on a dark panel
+  logs "Screen off, don't set gesture flag" and the chip stays as it was. Closing the
+  cover over a dark, armed panel therefore switches the panel on and off once.
+- Pitfall: `evtest | grep` under `timeout` wrote nothing (block-buffered pipe killed
+  with the pipeline); two capture runs were empty. The daemon's own log gave the key.
+- Awake on the cable with the screen off, four 70 s blocks each: 1.24 W unarmed,
+  1.44 W armed, spread larger than the difference.
+- Checked on the 8 GB tablet by the owner: double tap after a power-key screen-off on
+  the cable, and from s2idle on battery ("resumed: wake irq 421, fired: spi4.0+1").
