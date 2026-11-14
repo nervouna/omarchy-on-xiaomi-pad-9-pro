@@ -62,15 +62,23 @@ def as_user(*cmd, wait=True):
 last_on = True  # what we last set; used when Hyprland can't be asked
 poll_at = 0.0    # next time to ask Hyprland whether something else woke the screen
 tap_wake = True  # arm the double-tap gesture for the next screen-off
+tap_set = None   # the mode the driver last accepted; None = retry
 
 def arm_tap(on):
-    global tap_wake
+    global tap_wake, tap_set
     tap_wake = on
     try:
-        subprocess.run([XTOUCH, "set", DOUBLETAP, "1" if on else "0"],
-                       capture_output=True, timeout=5)
+        r = subprocess.run([XTOUCH, "set", DOUBLETAP, "1" if on else "0"],
+                           capture_output=True, text=True, timeout=5)
+        ok = r.returncode == 0 and "ret 0" in r.stdout
+        err = (r.stdout + r.stderr).strip()
     except Exception as exc:
-        print("double tap mode failed:", repr(exc), flush=True)
+        ok, err = False, repr(exc)
+    if not ok and tap_set is not None:
+        print("double tap mode failed:", err, flush=True)
+    elif ok and tap_set is None:
+        print("double tap mode set", flush=True)
+    tap_set = on if ok else None
 
 def screen_on():
     try:
@@ -113,26 +121,30 @@ def run(dev):
     power_on_while_closed = False       # the user woke it with the power key on purpose
     print("lid", lid_dev, "closed" if lid_closed else "open", flush=True)
     arm_tap(not lid_closed)
-    tap_dev = find(TAP_DEV)
     tap = None                          # open only while we hold the screen off
+    retry_at = time.monotonic() + 5     # the touch driver may load after us
     try:
         down = None  # monotonic press time while the key is held and undecided
         while True:
             if last_on and tap is not None:
                 os.close(tap); tap = None
-            elif not last_on and tap is None and tap_dev:
-                tap = os.open(tap_dev, os.O_RDONLY | os.O_NONBLOCK)
+            elif not last_on and tap is None and find(TAP_DEV):
+                tap = os.open(find(TAP_DEV), os.O_RDONLY | os.O_NONBLOCK)
             if down is not None:
                 timeout = max(0.0, down + HOLD - time.monotonic())
             elif last_on and not lid_closed:
-                timeout = None
+                timeout = None if tap_set is not None else max(0.0, retry_at - time.monotonic())
+                if tap_set is None and timeout == 0.0:
+                    retry_at = time.monotonic() + 5
+                    arm_tap(tap_wake)
+                    continue
             else:                                      # poll Hyprland once a second
                 timeout = max(0.0, poll_at - time.monotonic())
             fds = [fd] + [f for f in (lid, tap) if f is not None]
             ready = select.select(fds, [], [], timeout)[0]
             # Off a deadline, not the select timeout: touches on the disabled
             # touchscreen keep the tap fd readable.
-            if down is None and timeout is not None and time.monotonic() >= poll_at:
+            if down is None and not (last_on and not lid_closed) and time.monotonic() >= poll_at:
                 poll_at = time.monotonic() + 1.0
                 if screen_on():
                     if lid_closed and not power_on_while_closed:
