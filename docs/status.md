@@ -34,7 +34,7 @@ pen and Bluetooth headphones are not yet re-checked on 4.5
 | Built-in microphones via PipeWire -> stock PAL | works |
 | Power button: short press screen off/on, hold -> Omarchy system menu | works (*user*) |
 | Brightness control (panel0-backlight) | works (*user*) |
-| Screen-off (DPMS), idle screen-off after 5 min (hypridle, no lock) | works (*user*); wake by power key, not touch |
+| Screen-off (DPMS); idle: on battery dim after 1 min and off after 2 min, on external power screensaver and off after 5 min (hypridle, no lock) | works (*user*: the 5 min screen-off); wake by power key, not touch |
 | Suspend (s2idle) on battery while the screen is off (loa-sleepd) | works (*user*); wake by power key or keyboard key (not cover open, [#15](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/15)) |
 | Low battery: clean power-off at 3 % (loa-sleepd; RTC wake-ups re-check while asleep) | works (tested with a simulated 2 %, awake and asleep) |
 | Keyboard backlight (auto in dim light, `loa-kbd-backlight`) | works (*user*: levels) |

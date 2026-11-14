@@ -1576,3 +1576,23 @@ nothing. Each fix uncovered the next cause:
 - Verified: off/on/toggle as root and as the user (HAL never restarted), off
   kept across a stack restart, the shell in sync after a stack restart with the
   desktop up; the panel switch by the user after a reboot.
+
+### 2026-11-14: battery idle policy (#63)
+
+- hypridle gets three steps, all in /usr/lib/loa/idle.sh: 60 s dim and 120 s screen off
+  on battery only (the power source is read when the step fires), 300 s screen off always.
+  The dim is done by loa-autobrightness while /run/user/1000/loa-idle-dim exists; it
+  writes the earlier value back itself, so no bias is learned.
+- Checked on the 12 GB tablet, on the cable with the battery steps forced
+  (`touch /run/user/1000/loa-idle-on-battery`), from a real key press: backlight
+  2824 -> 40 at 60 s, DPMS off at 120 s, no screensaver process for 200 s, bias
+  3.00 before and after. Dim, screen off, screen on again: back to 2824 at once.
+- Pitfall: hypridle runs on-resume only for input it sees. The power key is grabbed by
+  loa-power-key and the touch IC is off while DPMS is off, so a wake does not remove the
+  dim flag; loa-autobrightness drops it on every panel off -> on. A hypridle restarted
+  while idle left the screen at 1 %: the daemon now also drops a flag older than the
+  running hypridle (/proc/<pid>/stat start time against the flag's mtime).
+- Pitfall: Omarchy's idle service counts from the last real input, hypridle from its own
+  start. Restarting hypridle for a test while the tablet is already idle lets the
+  screensaver start first, and its launch resets hypridle's timers.
+- Not done: a run on battery with loa-powerlog; the 8 GB tablet.

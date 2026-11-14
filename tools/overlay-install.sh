@@ -108,6 +108,21 @@ if [ -f $B ] && grep -q '^cpu_sensor = "Auto"' $B; then
     fi
 fi
 
+# 3d. hypridle.conf is a user default, seeded once: an installed tablet keeps the
+# copy it got. A copy that is still one we shipped earlier (sha256 below) is
+# replaced by the current one; an edited copy stays. hypridle reads it at start,
+# so the new timeouts apply from the next boot.
+C=/home/omarchy/.config/hypr/hypridle.conf
+if [ -f $C ]; then case $(sha256sum $C | cut -d' ' -f1) in
+    01dade3a4b24e31bd3f1e942973e25cd19855a528116da881f7643a90eb6cdb0|\
+    2af56065e876c2d187306740496fd26e6c547c16f3ef18db45ccb043ae794490)
+        n=$((n + 1)); echo "hypridle.conf: replace the earlier default (battery: dim at 1 min, off at 2 min)"
+        if [ $MODE = apply ]; then
+            backup $C
+            $U cp $S/user-defaults$C $C
+        fi ;;
+esac; fi
+
 # 4c. Omarchy patches dropped from the overlay (fixed in Omarchy 4.5). A dropped
 # patch that is still applied is taken out again first, or the installed file
 # would keep our change until the next Omarchy package update. An install older

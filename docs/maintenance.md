@@ -378,6 +378,25 @@ Keep backups out of this repository: they hold secrets.
 - To try another governor: `GOVERNOR=walt` in `/etc/default/loa-cpufreq`, then
   `systemctl restart loa-cpufreq`. The setting is runtime only; nothing is written to the boot image.
 
+## Idle
+
+- hypridle (`~/.config/hypr/hypridle.conf`, a user default) is the only timer; its steps
+  are in `/usr/lib/loa/idle.sh`, which reads the power source
+  (`/sys/class/power_supply/usb/online`) when a step fires.
+- On battery: after 1 min the backlight fades to 1 % (`loa-autobrightness` does it while
+  `/run/user/1000/loa-idle-dim` exists, and writes the earlier value back without
+  learning a bias), after 2 min the screen switches off and `loa-sleepd` suspends. The
+  screensaver never starts, because the screen is off before Omarchy's 150 s
+  (`idle.screensaver` in `~/.config/omarchy/shell.json`) and patch 0005 keeps it from
+  launching on a dark screen: keep the second timeout below that value.
+- On external power: Omarchy's screensaver at 150 s, screen off 5 min after that
+  launch (it counts as activity), so 7.5 min after the last input.
+- The power key and the cover wake the screen without hypridle seeing input, so
+  `loa-autobrightness` also ends the dim whenever the panel comes back on.
+- To test the battery steps on the USB cable: `touch /run/user/1000/loa-idle-on-battery`.
+- `tools/overlay-install.sh` replaces an installed `hypridle.conf` only if it is still
+  a default shipped earlier (step 3d); it applies from the next boot.
+
 ## Prebuilt helper binaries
 
 Ten ELF binaries are tracked in git. `tools/check-helpers.sh` (the `helpers`
