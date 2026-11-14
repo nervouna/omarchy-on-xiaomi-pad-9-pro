@@ -94,6 +94,20 @@ if [ -f $J ] && [ ! -e $M ] && [ "$(jq -r '.idle.lock // 300' $J 2>/dev/null)" =
     fi
 fi
 
+# 3c. btop's CPU temperature sensor. With cpu_sensor = "Auto" btop takes any
+# thermal zone with "cpu" in its name, and here that can be cpu-hw-trip-0/1,
+# which always read 95 C (a trip threshold, not a temperature). Point it at the
+# first prime core instead. Only an untouched "Auto" is changed.
+B=/home/omarchy/.config/btop/btop.conf
+if [ -f $B ] && grep -q '^cpu_sensor = "Auto"' $B; then
+    z=$(grep -lx cpu-1-0-0 /sys/class/thermal/thermal_zone*/type 2>/dev/null | head -1 | sed 's|.*thermal_zone\([0-9]*\)/type|\1|')
+    n=$((n + 1)); echo "btop.conf: cpu_sensor Auto -> thermal${z:-33}/cpu-1-0-0"
+    if [ $MODE = apply ]; then
+        backup $B
+        $U sed -i "s|^cpu_sensor = \"Auto\"|cpu_sensor = \"thermal${z:-33}/cpu-1-0-0\"|" $B
+    fi
+fi
+
 # 4c. Omarchy patches dropped from the overlay (fixed in Omarchy 4.5). A dropped
 # patch that is still applied is taken out again first, or the installed file
 # would keep our change until the next Omarchy package update. An install older
