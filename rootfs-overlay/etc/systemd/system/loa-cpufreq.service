@@ -1,5 +1,5 @@
 [Unit]
-Description=LoA CPU frequency governor (schedutil instead of the command line's performance)
+Description=LoA CPU frequency governor and bus clock floor
 After=loa-modules.service
 
 [Service]

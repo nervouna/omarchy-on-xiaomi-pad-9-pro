@@ -377,6 +377,19 @@ Keep backups out of this repository: they hold secrets.
   ramps up in about 100 ms without Android's input boost.
 - To try another governor: `GOVERNOR=walt` in `/etc/default/loa-cpufreq`, then
   `systemctl restart loa-cpufreq`. The setting is runtime only; nothing is written to the boot image.
+- The same service lowers the bus clock floor. The vendor bus DCVS driver starts
+  `/sys/devices/system/cpu/bus_dcvs/{DDR,LLCC,DDRQOS}` with `boost_freq` at `hw_max_freq`
+  "for better boot perf", and Android's post-boot script, which writes `hw_min_freq` into
+  it, does not run here, so the memory and cache clocks stay at maximum. The service
+  writes `hw_min_freq` into each `boost_freq`.
+- Measured on the 8 GB tablet ([#60](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/60)):
+  0.24 W less (1.11 W to 0.87 W, 22 %) awake with the screen off; no change while the
+  screensaver runs, since the clock is at maximum anyway; same sustained memory
+  throughput. The cost: a short memory-heavy burst after a pause takes about 1.6 times as
+  long (a 64 MiB copy: about 9 ms to 14 ms).
+- To go back to the boot state: `BUS_FLOOR=max` in `/etc/default/loa-cpufreq`, then
+  `systemctl restart loa-cpufreq`. A missing `bus_dcvs` directory or a refused write is
+  logged but does not fail the unit.
 
 ## Idle
 
