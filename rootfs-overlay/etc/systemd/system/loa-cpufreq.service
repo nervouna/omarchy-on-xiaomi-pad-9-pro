@@ -1,0 +1,11 @@
+[Unit]
+Description=LoA CPU frequency governor (schedutil instead of the command line's performance)
+After=loa-modules.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/lib/loa/cpufreq-setup.sh
+
+[Install]
+WantedBy=multi-user.target

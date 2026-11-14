@@ -365,6 +365,19 @@ Keep backups out of this repository: they hold secrets.
   the bootloader sets `cgroup_disable=pressure`.
 - The journal is capped at 500 MB, because the keyboard driver logs every touchpad packet.
 
+## CPU frequency
+
+- The stock kernel command line sets `cpufreq.default_governor=performance`, and Android's
+  post-boot script, which would switch to `walt`, does not run here. `loa-cpufreq.service`
+  (`/usr/lib/loa/cpufreq-setup.sh`) sets `schedutil` on both policies once the cpufreq
+  driver's module is loaded.
+- Measured on the 8 GB tablet ([#60](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/60)):
+  0.6 W less than `performance` when idle, screen on or off; same sustained throughput;
+  short bursts take 1.6 times as long. `walt` saves a little more with the screen on but
+  ramps up in about 100 ms without Android's input boost.
+- To try another governor: `GOVERNOR=walt` in `/etc/default/loa-cpufreq`, then
+  `systemctl restart loa-cpufreq`. The setting is runtime only; nothing is written to the boot image.
+
 ## Prebuilt helper binaries
 
 Ten ELF binaries are tracked in git. `tools/check-helpers.sh` (the `helpers`
