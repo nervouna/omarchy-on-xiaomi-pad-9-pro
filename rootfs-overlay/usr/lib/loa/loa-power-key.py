@@ -10,6 +10,11 @@ off we poll Hyprland; if another key woke it, touch is re-enabled.
 Keyboard cover (xiaomi-hall SW_LID): closing turns the screen off, opening turns
 it on; while closed, stray key presses under the cover can't keep it awake
 (unless the power key woke it deliberately).
+Double tap to wake: the touch controller keeps scanning for a double tap while
+the panel is off (xiaomi-touch mode 14) and reports it as a key on the
+touchscreen's input device. Hyprland has that device disabled while the screen
+is off, so the key is read here. The gesture is off while the cover is closed:
+the folded keyboard rests on the glass.
 DPMS became safe once the first frame after continuous splash stopped failing
 (AQ_DRM_FORCE_MODE_ID, NOTES.md)."""
 import fcntl, glob, json, os, select, struct, subprocess, time
@@ -17,6 +22,9 @@ KEY_POWER, EV_KEY = 116, 1
 HOLD = 0.7
 EVIOCGRAB = 0x40044590
 TOUCH = "nvtcapacitivetouchscreen-1"
+TAP_DEV = "NVTCapacitiveTouchScreen"   # kernel name of the same device
+KEY_WAKEUP = 143
+XTOUCH, DOUBLETAP = "/usr/lib/loa/loa-xtouch", "14"   # Touch_Doubletap_Mode
 FMT = "llHHi"; SZ = struct.calcsize(FMT)
 
 def find(name="pmic_pwrkey"):
@@ -52,6 +60,16 @@ def as_user(*cmd, wait=True):
     return subprocess.run(argv, env=user_env(), capture_output=True, text=True, timeout=5).stdout
 
 last_on = True  # what we last set; used when Hyprland can't be asked
+tap_wake = True  # arm the double-tap gesture for the next screen-off
+
+def arm_tap(on):
+    global tap_wake
+    tap_wake = on
+    try:
+        subprocess.run([XTOUCH, "set", DOUBLETAP, "1" if on else "0"],
+                       capture_output=True, timeout=5)
+    except Exception as exc:
+        print("double tap mode failed:", repr(exc), flush=True)
 
 def screen_on():
     try:
@@ -70,6 +88,7 @@ def set_screen(on):
         as_user("hyprctl", "eval", f'hl.dispatch(hl.dsp.dpms({{ action = "{act}" }}))')
         as_user("hyprctl", "eval", f'hl.device({{ name = "{TOUCH}", enabled = {lua} }})')
     else:
+        arm_tap(tap_wake)   # the driver reads the mode when the panel goes off
         as_user("hyprctl", "eval", f'hl.device({{ name = "{TOUCH}", enabled = {lua} }})')
         as_user("hyprctl", "eval", f'hl.dispatch(hl.dsp.dpms({{ action = "{act}" }}))')
     print("screen", act, flush=True)
@@ -81,7 +100,9 @@ def menu():
     print("system menu toggled", flush=True)
 
 def run(dev):
+    global tap_wake, last_on
     print("listening on", dev, flush=True)
+    last_on = screen_on()               # a restart may find the screen off
     fd = os.open(dev, os.O_RDONLY)
     fcntl.ioctl(fd, EVIOCGRAB, 1)
     lid_dev = find("xiaomi-hall")      # keyboard cover magnet: SW_LID 1 = closed
@@ -89,14 +110,21 @@ def run(dev):
     lid_closed = lid_is_closed(lid) if lid is not None else False
     power_on_while_closed = False       # the user woke it with the power key on purpose
     print("lid", lid_dev, "closed" if lid_closed else "open", flush=True)
+    arm_tap(not lid_closed)
+    tap_dev = find(TAP_DEV)
+    tap = None                          # open only while we hold the screen off
     try:
         down = None  # monotonic press time while the key is held and undecided
         while True:
+            if last_on and tap is not None:
+                os.close(tap); tap = None
+            elif not last_on and tap is None and tap_dev:
+                tap = os.open(tap_dev, os.O_RDONLY | os.O_NONBLOCK)
             if down is not None:
                 timeout = max(0.0, down + HOLD - time.monotonic())
             else:
                 timeout = None if (last_on and not lid_closed) else 1.0
-            fds = [fd] + ([lid] if lid is not None else [])
+            fds = [fd] + [f for f in (lid, tap) if f is not None]
             ready = select.select(fds, [], [], timeout)[0]
             if not ready:
                 if down is not None:
@@ -107,15 +135,28 @@ def run(dev):
                     elif not last_on:
                         set_screen(True)               # woken by another input
                 continue
+            if tap is not None and tap in ready:
+                try:
+                    data = os.read(tap, SZ * 64)
+                except BlockingIOError:
+                    data = b""
+                for i in range(0, len(data) - SZ + 1, SZ):
+                    _, _, t, c, v = struct.unpack(FMT, data[i:i + SZ])
+                    if t == EV_KEY and c == KEY_WAKEUP and v == 1 and not lid_closed and not last_on:
+                        print("double tap", flush=True)
+                        set_screen(True)
+                if fd not in ready and lid not in ready:
+                    continue
             if lid is not None and lid in ready:
                 e = os.read(lid, SZ)
                 _, _, t, c, v = struct.unpack(FMT, e)
                 if t == EV_SW and c == SW_LID and bool(v) != lid_closed:
                     lid_closed = bool(v); power_on_while_closed = False
                     print("cover", "closed" if lid_closed else "opened", flush=True)
+                    tap_wake = not lid_closed
                     set_screen(not lid_closed)
-                if fd not in ready:
-                    continue
+            if fd not in ready:
+                continue
             e = os.read(fd, SZ)
             if len(e) < SZ:
                 return
@@ -130,9 +171,9 @@ def run(dev):
                 power_on_while_closed = lid_closed and on
                 set_screen(on)
     finally:
-        os.close(fd)
-        if lid is not None:
-            os.close(lid)
+        for f in (fd, lid, tap):
+            if f is not None:
+                os.close(f)
 
 while True:
     dev = find()
