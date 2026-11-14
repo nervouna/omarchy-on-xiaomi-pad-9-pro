@@ -67,6 +67,26 @@ def target_raw():
     lux = 10 ** state["loglux"] - 1
     return max(MIN_RAW, min(MAX, int(round(curve(lux) * bias * MAX))))
 
+def dim_flag_stale():
+    """The flag is older than every running hypridle (it was restarted or died
+    while idle): nobody is left to remove it on the next input."""
+    try:
+        age = time.time() - os.stat(DIM_FLAG).st_mtime
+        up = time.clock_gettime(time.CLOCK_BOOTTIME)
+        for pid in os.listdir("/proc"):
+            if pid.isdigit():
+                try:
+                    st = open("/proc/%s/stat" % pid).read()
+                except OSError:
+                    continue
+                if "(hypridle)" in st:
+                    started = int(st.rsplit(")", 1)[1].split()[19]) / os.sysconf("SC_CLK_TCK")
+                    if up - started >= age:
+                        return False
+    except OSError:
+        return False
+    return True
+
 def idle_dim():
     """-> True while the idle dim owns the backlight. Works without a lux reading
     and with OFF_FLAG set: it only ever goes down and back to where it was."""
@@ -81,6 +101,14 @@ def idle_dim():
             except OSError:
                 pass
             flag = False
+    dim["tick"] = (dim.get("tick", 0) + 1) % 10
+    if flag and dim["tick"] == 0 and dim_flag_stale():
+        print("idle dim: stale request dropped", flush=True)
+        try:
+            os.unlink(DIM_FLAG)
+        except OSError:
+            pass
+        flag = False
     if dim["saved"] is None:
         if not flag:
             return False
