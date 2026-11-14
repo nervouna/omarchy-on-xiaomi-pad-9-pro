@@ -34,8 +34,8 @@ pen and Bluetooth headphones are not yet re-checked on 4.5
 | Built-in microphones via PipeWire -> stock PAL | works |
 | Power button: short press screen off/on, hold -> Omarchy system menu | works (*user*) |
 | Brightness control (panel0-backlight) | works (*user*) |
-| Screen-off (DPMS); idle: on battery dim after 1 min and off after 2 min, on external power screensaver and off after 5 min (hypridle, no lock) | works (*user*: the 5 min screen-off); wake by power key, not touch |
-| Suspend (s2idle) on battery while the screen is off (loa-sleepd) | works (*user*); wake by power key or keyboard key (not cover open, [#15](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/15)) |
+| Screen-off (DPMS); idle: on battery dim after 1 min and off after 2 min, on external power screensaver and off after 5 min (hypridle, no lock) | works (*user*: the 5 min screen-off); wake by power key or a double tap on the screen (*user*) |
+| Suspend (s2idle) on battery while the screen is off (loa-sleepd) | works (*user*); wake by power key, double tap (*user*) or keyboard key (not cover open, [#15](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/15)) |
 | Low battery: clean power-off at 3 % (loa-sleepd; RTC wake-ups re-check while asleep) | works (tested with a simulated 2 %, awake and asleep) |
 | Keyboard backlight (auto in dim light, `loa-kbd-backlight`) | works (*user*: levels) |
 | Bluetooth (stock HAL + bridge -> BlueZ): pairing, A2DP headphones | works (*user*) |
@@ -95,7 +95,6 @@ Each item is tracked in its issue:
 - Standby drain: s2idle drains about 3.7 %/h, about the same as staying awake
   with the screen off, [#14](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/14).
 - Wake on cover open, [#15](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/15);
-  tap-to-wake, [#19](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/19);
   auto-rotate, [#18](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/18).
 - Screensaver, [#23](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/23).
 - Headset jack, [#17](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/17).

@@ -30,8 +30,8 @@ Installing flashes partitions on the tablet. A mistake can leave it unbootable,
 unlocking the bootloader can void the warranty, and repartitioning wipes Android's
 data. Read [Safety first](#safety-first) before you start.
 
-Most of the hardware works; cameras, the modem, the headset jack, tap-to-wake and
-auto-rotate do not. See [What works](#what-works), the hard limits of the stock
+Most of the hardware works; cameras, the modem, the headset jack and auto-rotate
+do not. See [What works](#what-works), the hard limits of the stock
 kernel under [Limits](#limits), and the details in [docs/status.md](docs/status.md).
 
 There are no releases and no prebuilt images: you build the root image and the boot
@@ -63,14 +63,14 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) to report a bug or send a fix, and
 |---|---|
 | Automatic boot into Omarchy; Android still bootable on demand | works |
 | Display 3200×2136 @ 120 Hz, GPU (Adreno 829 via KGSL Mesa, GL + Vulkan) | works |
-| Touch, brightness, auto-brightness, screen-off, s2idle suspend | works |
+| Touch, double tap to wake, brightness, auto-brightness, screen-off, s2idle suspend | works |
 | Wi-Fi, Bluetooth (incl. A2DP headphones) | works |
 | Speakers, built-in microphones (PipeWire → stock Qualcomm audio stack) | works |
 | Xiaomi pogo keyboard + touchpad, backlight, cover close/open | works |
 | Charging (battery auth, PPS fast charge ~34 W) | works; full-power adapter auth in progress |
 | Xiaomi Focus Pencil Pro as a pointer (auto-pairing, hover, tap, drag, double tap = right click) | works |
 | Chinese input (fcitx5) | works |
-| Cameras ([#21](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/21)), modem ([#22](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/22)), headset jack ([#17](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/17)), tap-to-wake ([#19](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/19)), auto-rotate ([#18](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/18)) | not yet |
+| Cameras ([#21](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/21)), modem ([#22](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/22)), headset jack ([#17](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/17)), auto-rotate ([#18](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/18)) | not yet |
 
 Details and caveats: [docs/status.md](docs/status.md).
 
@@ -117,8 +117,7 @@ double-scaled). None of this is in the repo; it just shows what the port can car
 - **Cameras** ([#21](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/21)),
   **modem** ([#22](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/22)),
   **headset jack** ([#17](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/17)).
-- **Tap-to-wake** ([#19](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/19)),
-  **wake on cover open** ([#15](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/15)),
+- **Wake on cover open** ([#15](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/15)),
   **auto-rotate** ([#18](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/18)).
 
 ## Safety first
