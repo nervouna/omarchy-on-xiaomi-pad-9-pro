@@ -1,0 +1,31 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: LoA <loa@localhost>
+Date: Sun, 15 Nov 2026 16:20:00 +0800
+Subject: [PATCH] hypr: load the LoA device settings after Omarchy's defaults
+
+Omarchy has no system-level include point for Hyprland settings, so the
+tablet's panel, touch, pen, key and session settings
+(/usr/share/loa/hypr/loa.lua) load as the last step of Omarchy's defaults,
+before the user's ~/.config/hypr files.
+---
+ default/hypr/omarchy.lua | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/default/hypr/omarchy.lua b/default/hypr/omarchy.lua
+--- a/default/hypr/omarchy.lua
++++ b/default/hypr/omarchy.lua
+@@ -26,3 +26,12 @@
+
+ -- Current theme overrides.
+ require_optional.module("omarchy.current.theme.hyprland")
++
++-- LoA device settings (tablet panel, touch, pen, keys, session processes),
++-- after Omarchy's defaults and before the user's files, which still win.
++local loa = "/usr/share/loa/hypr/loa.lua"
++local loa_file = io.open(loa, "r")
++if loa_file then
++  loa_file:close()
++  dofile(loa)
++end
+--
+2.54.0

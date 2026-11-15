@@ -1,8 +1,11 @@
 -- LoA device settings for the Xiaomi Pad 9 Pro (shuntian), owned by the
 -- omarchy-on-xiaomi-pad-9-pro overlay (tools/apply-overlay.sh rewrites this file).
--- Loaded from ~/.config/hypr/hyprland.lua right after Omarchy's defaults and
--- BEFORE the personal files (hypr/monitors, input, bindings, looknfeel,
--- autostart), so anything set there wins. Don't edit here; override there.
+-- Loaded as the last step of Omarchy's defaults (default/hypr/omarchy.lua, LoA
+-- patch 0010) and BEFORE the personal files (hypr/monitors, input, bindings,
+-- looknfeel, autostart), so anything set there wins. Don't edit here; override there.
+-- Older installs also load it from a dofile line in ~/.config/hypr/hyprland.lua,
+-- so it runs twice per config load there: settings are idempotent, and the
+-- session processes are registered once per Hyprland process (below).
 
 -- Display ---------------------------------------------------------------------
 -- Native panel: 3200x2136 DSI, dual-LM (Aquamarine splits the primary plane,
@@ -47,15 +50,20 @@ hl.unbind("XF86PowerOff")
 -- omarchy:menu global shortcut to rebind it to.
 
 -- Session processes ---------------------------------------------------------------
-hl.on("hyprland.start", function()
-  -- Voxtype is optional until a model has been downloaded; its small manager is a
-  -- no-op without a model and replaces the unavailable systemd user unit.
-  hl.exec_cmd("omarchy-voxtype-daemon start")
-  -- Idle: dim and screen off (~/.config/hypr/hypridle.conf, /usr/lib/loa/idle.sh).
-  -- A dim request left by a previous session goes first.
-  hl.exec_cmd("/usr/lib/loa/idle.sh undim")
-  hl.exec_cmd("hypridle")
-end)
+-- The Lua state outlives a config reload, so this flag keeps a second evaluation
+-- (the old dofile line, or a reload) from registering another start handler.
+if not _G.loa_session_handler then
+  _G.loa_session_handler = true
+  hl.on("hyprland.start", function()
+    -- Voxtype is optional until a model has been downloaded; its small manager is a
+    -- no-op without a model and replaces the unavailable systemd user unit.
+    hl.exec_cmd("omarchy-voxtype-daemon start")
+    -- Idle: dim and screen off (~/.config/hypr/hypridle.conf, /usr/lib/loa/idle.sh).
+    -- A dim request left by a previous session goes first.
+    hl.exec_cmd("/usr/lib/loa/idle.sh undim")
+    hl.exec_cmd("hypridle")
+  end)
+end
 
 -- Look & rendering ------------------------------------------------------------------
 -- Carried over unchanged from the earlier (PRoot-era) looknfeel.lua so behaviour
