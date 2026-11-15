@@ -384,8 +384,10 @@ boots.
 and the rebuilt one does not trust them. `reboot-to-android` therefore writes the stock
 kernel back first; on the next Omarchy boot `loa-kernel-reinstall.service` writes the
 rebuilt kernel again, and the restart after that runs it. Holding Volume Up at power-on
-starts Android on whatever kernel is in `boot`: restore the stock kernel before using
-that path.
+starts Android on whatever kernel is in `boot`. On the rebuilt kernel Android does not
+finish booting: 578 modules instead of 669 (no `bluetooth`, `rfkill`, `rust_binder`), and
+`system_server` restarts about every 100 seconds. `adb` works and a restart returns to
+Omarchy. Use `reboot-to-android`, or restore the stock kernel first.
 
 **Reflashing the root image.** Restore the stock kernel before `tools/install.sh`, and
 install the rebuilt one again afterwards. A fresh root that first boots on the rebuilt

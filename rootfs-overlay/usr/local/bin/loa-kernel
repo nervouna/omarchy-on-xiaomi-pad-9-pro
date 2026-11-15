@@ -250,7 +250,7 @@ def cmd_update():
         f = f"{d}/{name}"
         if not (os.path.exists(f) and file_sha(f) == want):
             url = f"https://github.com/{REPO}/releases/download/{p['tag']}/{name}"
-            r = subprocess.run(["curl", "-fL", "-C", "-", "--retry", "3", "--connect-timeout", "20",
+            r = subprocess.run(["curl", "-fL", "-#", "-C", "-", "--retry", "3", "--connect-timeout", "20",
                                 "--speed-limit", "1024", "--speed-time", "60", "--max-time", "1800",
                                 "-o", f, url])
             if r.returncode != 0:

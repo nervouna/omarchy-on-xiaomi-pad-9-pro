@@ -1708,3 +1708,33 @@ nothing. Each fix uncovered the next cause:
   `nitian2`, ... ("against heaven"; the codename `shuntian` reads "with heaven"). The
   `loa1` build above was a pull request artifact and was never published; both tablets
   get `nitian1` from the release.
+
+### 2026-11-15: the rebuilt kernel becomes the expected one (#90)
+
+- `rootfs-overlay/usr/share/loa/kernel/pin` names the kernel a version of the repo
+  expects (tag, release string, sha256 of `boot-gz.img` and the module archive). It rides
+  in the signed update bundle, so `loa-kernel update` needs no signature on the download:
+  it fetches the two files from the release (curl with resume), checks both hashes and
+  the release string inside the image, then installs as before. Owner-run only:
+  `loa-update` prints a hint and never writes `boot`, because its rollback runs from a
+  booted system, which a bad kernel never reaches. `loa-kernel update` refuses while
+  `/var/lib/loa-update/pending` exists. `tools/install-kernel.sh` defaults to the pin.
+- The `no-userns.conf` drop-ins and the `chrome-sandbox` hook stay: Omarchy boots on the
+  stock kernel on a fresh install's first boot, after Android and after a restore.
+- On the 8 GB tablet: `update` with the pinned kernel installed changes nothing; with a
+  pending-update marker it refuses; with one pinned hash altered it downloads, refuses and
+  leaves `boot` (stock, restored for the test) alone; a download cut off after 4 s
+  (3 MB of 45) was resumed by the next run, which installed; `boot` then had the same
+  sha256 as after the USB install.
+- Android started directly on `nitian1` (`/loa/next-boot-android` set by hand, which is
+  what Volume Up at power-on does): `adb` up, 578 modules against 669 on the stock kernel,
+  none of `bluetooth`, `rfkill`, `rust_binder`; `sys.boot_completed` never set in 6
+  minutes, `system_server` restarted four times, about 100 s apart. `adb reboot` returned
+  to Omarchy with the usual module counts and the slot still marked successful. So the
+  restore in `reboot-to-android` is needed, and Volume Up is a dead end on this kernel.
+  Stage 1 does not refuse it (that is an `init_boot` change).
+- s2idle with resume was seen in the logs on the first build (`loa1`): once on the 12 GB
+  tablet, twice on the 8 GB one. Not re-observed on `nitian1`.
+- Not checked: `loa-update` itself on the rebuilt kernel (the canary of the release that
+  carries this is the first run); the hint line inside `loa-update` (the copy that runs
+  an update is the old one).
