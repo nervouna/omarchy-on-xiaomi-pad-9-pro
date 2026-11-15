@@ -1,0 +1,5 @@
+This is a small Vite project (index.html, src/main.js, src/data.js, src/format.js, src/style.css). Its dev server is already running and a browser shows the page; do not start, stop or install anything.
+
+Add a search box above the parts table that filters the rows by part name as the user types, and make the summary line count only the rows that are shown. Style the search box in src/style.css. Keep the change small and in plain JavaScript.
+
+When you are done, run `node --check src/main.js` and reply with one line: DONE.

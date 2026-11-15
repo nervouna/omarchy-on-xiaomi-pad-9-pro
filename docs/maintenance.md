@@ -561,6 +561,84 @@ Keep backups out of this repository: they hold secrets.
   lists it as `differs from the default`, and the owner copies the new default over it
   (it applies from the next boot).
 
+## Power baseline (`tools/powertest`)
+
+One command on the Mac measures the 8 GB tablet on battery with the USB cable
+attached and nobody at the tablet
+([#93](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/93)):
+
+```
+tools/powertest/powertest.py setup      # once, and after a change to the test project
+tools/powertest/powertest.py run        # 3 workloads x 3 repeats x 10 min, about 3 to 4 h
+tools/powertest/powertest.py report DIR # rebuild report.md from a run's directory
+```
+
+The report goes to `~/.local/state/loa-powertest/<run id>/report.md` (`--out DIR`
+to change it), with `report.json` and each block's `loa-powerlog` file beside it.
+Durations, repeats, order and the charge window are options (`run --help`); for a
+quick check, `--repeats 1 --seconds 120 --window 0-100`. From a worktree, which has
+no `keys/`, set `TSSH=<main checkout>/tools/tssh`. The script runs on the system
+Python (`/usr/bin/python3`): macOS hides the interfaces' MAC addresses from
+Homebrew's Python and its children, so `tools/tssh` cannot find the tablet from there.
+
+**Cutting the charger input.** `/sys/devices/platform/soc/soc:mca_charge_interface/input_suspend`
+takes a vote, `<client> <type> <0|1>`: `<client>` is any name, `<type>` is `buck`
+or `all`; a bare `1` fails with `EINVAL`. Reading the file lists the votes
+(`buck eff_client:<client> 1`), and the input stays cut while any client votes 1,
+so resume with the same client name (the test uses `loa-powertest`).
+`suspend_status` (0/1) is the reliable flag; `battery/status` keeps saying
+`Charging` and `usb/online` stays 1 while the input is cut. While cut,
+`usb/current_now` reads 0, the USB data link and SSH stay up, and system power is
+battery voltage times battery current (`battery/current_now` is positive when
+discharging). A reboot clears every vote (checked: cut before `systemctl reboot`,
+`suspend_status` 0 and 1.1 A input 37 s after boot). A cable replug was not checked.
+
+**Workloads** (all three have the same services running: the Vite dev server of
+the fixed project in `tools/powertest/project`, a test Chromium on its page and a
+terminal, all under `/opt/loa-powertest`, nothing in the user's home):
+
+- `idle`: nothing else running. Separates backlight and base draw from compute.
+- `replay` (the baseline): every 30 s the next edit of `tools/powertest/edits.json`
+  (forward through the list, then back), wait until the page shows it, reload the
+  page, check again. A repeat with a failed cycle is invalid. No model in the loop.
+- `agent` (the cross-check): Pi Agent with `tools/powertest/prompt.txt` against
+  the LAN endpoint, temperature 0, looped with a project reset until the block
+  ends. A 503 or any other endpoint error makes the repeat invalid; it is rerun
+  once (`--max-attempts`). **The endpoint may be used only from 00:00 to 08:00
+  Mac local time**: outside that window, or when a block would end after 08:00,
+  the agent blocks are skipped with a line in the report (`--agent-anytime` is for
+  a person at the keyboard only). The endpoint's address, model and key are in
+  `/root/.config/loa-powertest/llm.env` on the tablet (mode 600) and nowhere else;
+  Pi's `models.json` is written to `/run/loa-powertest/pi-agent` for the block and
+  removed after it. No output of Pi leaves the tablet, only counts.
+
+**Fixed conditions** (recorded in each report): backlight at a fixed raw value
+(`--backlight`, default 820 of 4095) with `loa-autobrightness` paused
+(`/run/loa-autobrightness-off`); hypridle held off by a systemd idle inhibitor
+(it honours one, checked with a test listener; the inhibitor ends with its
+process); Omarchy's screensaver timer off (`omarchy-toggle-idle stay-awake`,
+put back only if it was off before); each block starts between 85 and 90 %
+charge: the runner drains with the input cut, or charges with the screen off;
+kernel, governor and tunables, bus floor, `sleep_disabled`, image, package
+versions, memory and swap at the start and end of each block, battery and CPU
+temperature, and a hash of the Wi-Fi network's name. Each block: services
+started fresh, 30 s settle, input cut and checked (`suspend_status` 1, USB
+current 0), `loa-powerlog` every 10 s with 1 s samples, the first 20 s
+discarded, input resumed and checked.
+
+**Safety.** The runner holds `/run/loa-powertest/active` on the tablet for the
+run and refuses to start while `/var/lib/loa-update/pending` or `/loa/dev-watchdog`
+exists. Everything is restored by `loa-powertest.py end` (input, backlight,
+auto-brightness, inhibitor, screensaver timer, test processes, lock). It also
+runs on its own: within seconds when the runner dies (the runner keeps an SSH
+session open whose end of file the tablet reads), from a watchdog unit when no
+heartbeat came for 180 s (the USB link drops for half a minute now and then,
+[#72](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/72)), when
+the run overruns, when the input stays cut longer than its block, or below 30 %
+charge. `/var/log/loa-powertest/restore.log` records each restore.
+`tools/powertest/tablet/loa-powertest.py end` by hand restores a tablet left in
+any state.
+
 ## Prebuilt helper binaries
 
 Ten ELF binaries are tracked in git. `tools/check-helpers.sh` (the `helpers`
