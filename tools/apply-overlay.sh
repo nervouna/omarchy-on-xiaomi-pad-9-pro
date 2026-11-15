@@ -5,11 +5,15 @@
 #
 # rootfs-overlay/  system files the port OWNS: installed/updated; a file that
 #                  differs is backed up to /var/backups/loa-overlay/<time>/ first.
-# user-defaults/   files the user may customise: installed only if MISSING,
-#                  never overwritten.
-# Personal Hyprland config is never touched: device settings live in
-# /usr/share/loa/hypr/loa.lua, loaded at the end of Omarchy's defaults
-# (default/hypr/omarchy.lua; the loader is added by /usr/lib/loa/omarchy-post-upgrade.sh).
+# user-defaults/   files the user may customise. An update never writes them, nor
+#                  anything else under /home: it lists the ones that are missing
+#                  or differ from the installed copy ("differs from the default:
+#                  <path>"). Only the first install (the image build,
+#                  LOA_FIRST_INSTALL=1) seeds them.
+# Device settings for Hyprland live in /usr/share/loa/hypr/loa.lua, loaded at the
+# end of Omarchy's defaults (default/hypr/omarchy.lua; the loader is added by
+# /usr/lib/loa/omarchy-post-upgrade.sh).
+# /etc/hostname is not ours: rename a tablet with hostnamectl set-hostname.
 set -e
 D=$(cd "$(dirname "$0")/.." && pwd)
 MODE=apply; [ "$1" = --diff ] && MODE=diff

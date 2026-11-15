@@ -151,6 +151,7 @@ tablet that runs from `omarchy` goes through `ramdump` first:
 ```
 tools/personalize.sh [hostname]        # Wi-Fi MAC from persist, machine-id,
                                        # SSH host keys, pacman keyring, hostname
+                                       # (rename later: hostnamectl set-hostname NAME)
 tools/tssh -t passwd omarchy           # sudo password (autologin doesn't need it)
 tools/apply-overlay.sh                 # bring the image up to the repo's overlay
 tools/tssh systemctl reboot
