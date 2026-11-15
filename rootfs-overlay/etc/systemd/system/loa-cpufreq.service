@@ -1,5 +1,5 @@
 [Unit]
-Description=LoA CPU frequency governor and bus clock floor
+Description=LoA CPU frequency governor, RT clamp and bus clock floor
 After=loa-modules.service
 
 [Service]

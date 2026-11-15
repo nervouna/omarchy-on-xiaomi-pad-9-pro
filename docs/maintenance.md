@@ -373,10 +373,25 @@ Keep backups out of this repository: they hold secrets.
   driver's module is loaded.
 - Measured on the 8 GB tablet ([#60](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/60)):
   0.6 W less than `performance` when idle, screen on or off; same sustained throughput;
-  short bursts take 1.6 times as long. `walt` saves a little more with the screen on but
-  ramps up in about 100 ms without Android's input boost.
+  short bursts take 1.6 times as long. `walt` draws 0.14 W less than `schedutil` at its
+  boot defaults with the screen off, but a short burst takes about three times as long
+  without Android's input boost.
 - To try another governor: `GOVERNOR=walt` in `/etc/default/loa-cpufreq`, then
   `systemctl restart loa-cpufreq`. The setting is runtime only; nothing is written to the boot image.
+- The same service stops most of the idle frequency switching, which is what `schedutil`
+  at its boot defaults pays over `walt`. Kernel RT threads carry `uclamp.min` 1024
+  (`/proc/sys/kernel/sched_util_clamp_min_rt_default`), so each wake-up takes `policy0`
+  from its lowest step to its highest, and `rate_limit_us` 45 lets `policy6` switch about
+  20 times a second. The service writes 0 into the RT clamp (Android's post-boot script
+  does the same) and then 10000 into `schedutil/rate_limit_us` on both policies.
+- Measured on the 8 GB tablet ([#60](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/60)):
+  0.09 W less awake with the screen off (0.81 W to 0.72 W, the same as `walt`), 0.15 W
+  less with a static screen on; ramp-up, burst latency and throughput unchanged. Neither
+  setting works alone: the clamp alone changes nothing, and the rate limit alone draws
+  more (0.91 W to 0.96 W), so the rate limit is written only after the clamp is accepted.
+  Not measured: the latency of RT threads themselves (audio, touch and pen interrupt threads).
+- To go back to the boot state: `RT_CLAMP_MIN=1024` and `RATE_LIMIT_US=45` in
+  `/etc/default/loa-cpufreq`, then `systemctl restart loa-cpufreq`.
 - The same service lowers the bus clock floor. The vendor bus DCVS driver starts
   `/sys/devices/system/cpu/bus_dcvs/{DDR,LLCC,DDRQOS}` with `boost_freq` at `hw_max_freq`
   "for better boot perf", and Android's post-boot script, which writes `hw_min_freq` into
