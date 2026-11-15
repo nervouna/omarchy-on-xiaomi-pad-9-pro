@@ -353,6 +353,12 @@ rebuilt kernel again, and the restart after that runs it. Holding Volume Up at p
 starts Android on whatever kernel is in `boot`: restore the stock kernel before using
 that path.
 
+**Reflashing the root image.** Restore the stock kernel before `tools/install.sh`, and
+install the rebuilt one again afterwards. A fresh root that first boots on the rebuilt
+kernel has neither the saved stock image nor the GKI modules: it comes up without them
+(no Bluetooth, among others), `loa-kernel` cannot restore, and the stock image has to
+come from `backups/` on the Mac through Fastboot.
+
 **A new ROM.** `loa-kernel` only knows the stock kernel of OS4.0.5.0. After moving a
 tablet to another ROM, restore the stock kernel first, and repeat the #57 comparison
 against the new modules before building for it.

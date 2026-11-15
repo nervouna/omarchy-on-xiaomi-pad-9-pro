@@ -152,6 +152,25 @@ def backup(sfx, cur):
     return img
 
 
+def extract_gki(archive, new, into):
+    prefix = f"lib/modules/{new}/"
+    with tarfile.open(archive) as t:
+        names = [m for m in t.getmembers() if m.name.lstrip("./").startswith(prefix)]
+        if not any(m.name.endswith(".ko") for m in names):
+            die(f"{archive} has no modules for {new}")
+        for m in names:
+            rel = m.name.lstrip("./")[len(prefix):]
+            if not rel or ".." in rel.split("/") or not (m.isdir() or m.isfile()):
+                continue
+            out = f"{into}/{rel}"
+            if m.isdir():
+                os.makedirs(out, exist_ok=True)
+            else:
+                os.makedirs(os.path.dirname(out), exist_ok=True)
+                with open(out, "wb") as f:
+                    shutil.copyfileobj(t.extractfile(m), f)
+
+
 def build_modules(new, archive):
     """/usr/lib/modules/<new>: stock ramdisk/ and vendor/ (hard links) + rebuilt GKI modules."""
     src, dst, tmp = f"{MODULES}/{STOCK}", f"{MODULES}/{new}", f"{MODULES}/.{new}.new"
@@ -162,22 +181,13 @@ def build_modules(new, archive):
         if s is None:
             die(f"no {d} modules in {src}: boot the stock kernel once so they are imported")
         subprocess.run(["cp", "-al", s, f"{tmp}/{d}"], check=True)
-    prefix = f"lib/modules/{new}/"
-    with tarfile.open(archive) as t:
-        names = [m for m in t.getmembers() if m.name.lstrip("./").startswith(prefix)]
-        if not any(m.name.endswith(".ko") for m in names):
-            die(f"{archive} has no modules for {new}")
-        for m in names:
-            rel = m.name.lstrip("./")[len(prefix):]
-            if not rel or ".." in rel.split("/") or not (m.isdir() or m.isfile()):
-                continue
-            out = f"{tmp}/{rel}"
-            if m.isdir():
-                os.makedirs(out, exist_ok=True)
-            else:
-                os.makedirs(os.path.dirname(out), exist_ok=True)
-                with open(out, "wb") as f:
-                    shutil.copyfileobj(t.extractfile(m), f)
+    if os.path.exists(archive):
+        extract_gki(archive, new, tmp)
+    else:
+        # A root image flashed while `boot` held this kernel: boot without the GKI
+        # modules (Bluetooth among them) rather than without any.
+        print(f"loa-kernel: {archive} is missing: {new} gets no GKI modules until "
+              "tools/install-kernel.sh is run again", file=sys.stderr)
     if os.path.lexists(dst):
         shutil.rmtree(dst + ".old", ignore_errors=True)
         os.rename(dst, dst + ".old")
@@ -219,7 +229,8 @@ def cmd_install(d):
     new = release(gz)
     if not new or not OURS.match(new):
         die(f"{d}/boot-gz.img holds {new!r}, not a kernel of this project")
-    stock = bytearray(backup(sfx, read_part(dev)))
+    orig = backup(sfx, read_part(dev))
+    stock = bytearray(orig)
     _, vbmeta = footer(stock)
     size, _ = footer(gz)
     if size > vbmeta:
@@ -235,7 +246,7 @@ def cmd_install(d):
         build_modules(new, f"{STATE}/{ARCHIVE}")
     stock[:vbmeta] = gz[:size] + bytes(vbmeta - size)
     if not write_part(dev, stock):
-        ok = write_part(dev, backup(sfx, b""))
+        ok = write_part(dev, orig)
         die("read-back of the new image differs; stock image " + ("restored" if ok else "NOT restored"))
     with open(f"{STATE}/installed", "w") as f:
         f.write(f"{new} {sha(stock)}\n")
