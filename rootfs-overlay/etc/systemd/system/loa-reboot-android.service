@@ -2,6 +2,9 @@
 Description=Reboot into stock Android once (stage 1 honours /loa/next-boot-android)
 [Service]
 Type=oneshot
+# Android gets the stock kernel (see loa-kernel); loa-kernel-reinstall.service
+# writes the rebuilt one back on the next Omarchy boot.
+ExecStart=/bin/sh -c '[ ! -e /var/lib/loa/kernel/installed ] || { /usr/local/bin/loa-kernel restore && touch /var/lib/loa/kernel/reinstall; }'
 ExecStart=/usr/bin/touch /loa/next-boot-android
 ExecStart=/usr/bin/sync
 ExecStart=/usr/bin/systemctl reboot

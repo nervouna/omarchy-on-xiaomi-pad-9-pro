@@ -4,7 +4,8 @@ stock kernel back.
 
   loa-kernel status
   loa-kernel backup          save the stock boot image of the active slot, print its path
-  loa-kernel install DIR     DIR holds boot-gz.img and system_dlkm_staging_archive.tar.gz
+  loa-kernel install [DIR]   DIR holds boot-gz.img and system_dlkm_staging_archive.tar.gz;
+                             without DIR: the kernel installed last (kept in /var/lib/loa/kernel)
   loa-kernel modules         rebuild the module tree of the installed kernel
   loa-kernel restore         write the saved stock boot image back
 
@@ -24,6 +25,12 @@ Module trees: /usr/lib/modules/<stock release> stays as imported;
 modules plus the rebuilt GKI modules. Writing the stock image back is a full
 rollback. If the new kernel does not come up, flash the stock image from
 Fastboot: `fastboot flash boot_<slot> <the image "backup" saved>`.
+
+Android keeps the stock kernel: its own GKI modules are signed for it and the
+rebuilt kernel does not trust them. loa-reboot-android.service restores the
+stock image first and leaves /var/lib/loa/kernel/reinstall; on the next Omarchy
+boot loa-kernel-reinstall.service writes the rebuilt kernel back, and the
+restart after that runs it.
 """
 import gzip, hashlib, os, re, shutil, struct, subprocess, sys, tarfile
 
@@ -201,10 +208,14 @@ def cmd_backup():
 
 
 def cmd_install(d):
+    d = d or STATE
     sfx = slot(); dev = boot_part(sfx)
     if not slot_successful(sfx):
         die(f"slot {sfx} is not marked successful; see slot-check (reboot-to-android once) first")
-    gz = open(f"{d}/boot-gz.img", "rb").read()
+    try:
+        gz = open(f"{d}/boot-gz.img", "rb").read()
+    except OSError:
+        die(f"no kernel build in {d}")
     new = release(gz)
     if not new or not OURS.match(new):
         die(f"{d}/boot-gz.img holds {new!r}, not a kernel of this project")
@@ -213,10 +224,15 @@ def cmd_install(d):
     size, _ = footer(gz)
     if size > vbmeta:
         die("the kernel does not fit in front of the stock vbmeta")
-    os.makedirs(STATE, exist_ok=True)
-    shutil.copyfile(f"{d}/{ARCHIVE}", f"{STATE}/{ARCHIVE}.new")
-    build_modules(new, f"{STATE}/{ARCHIVE}.new")
-    os.replace(f"{STATE}/{ARCHIVE}.new", f"{STATE}/{ARCHIVE}")
+    if d != STATE:                       # keep the build: `modules`, and `install` after Android
+        shutil.copyfile(f"{d}/{ARCHIVE}", f"{STATE}/{ARCHIVE}.new")
+        build_modules(new, f"{STATE}/{ARCHIVE}.new")
+        os.replace(f"{STATE}/{ARCHIVE}.new", f"{STATE}/{ARCHIVE}")
+        with open(f"{STATE}/boot-gz.img.new", "wb") as f:
+            f.write(gz); f.flush(); os.fsync(f.fileno())
+        os.replace(f"{STATE}/boot-gz.img.new", f"{STATE}/boot-gz.img")
+    elif not os.path.isdir(f"{MODULES}/{new}/kernel"):
+        build_modules(new, f"{STATE}/{ARCHIVE}")
     stock[:vbmeta] = gz[:size] + bytes(vbmeta - size)
     if not write_part(dev, stock):
         ok = write_part(dev, backup(sfx, b""))
@@ -263,8 +279,8 @@ def main():
         die("run as root")
     if a == ["backup"]:
         cmd_backup()
-    elif len(a) == 2 and a[0] == "install":
-        cmd_install(a[1])
+    elif a[:1] == ["install"] and len(a) <= 2:
+        cmd_install(a[1] if len(a) == 2 else None)
     elif a == ["modules"]:
         cmd_modules()
     elif a == ["restore"]:
