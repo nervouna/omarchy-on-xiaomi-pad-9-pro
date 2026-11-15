@@ -1,0 +1,142 @@
+# Builds the tablet's kernel: the Android common kernel the stock one was built
+# from (android16-6.12-2026-03, pinned in kernel/manifest.xml), with the options
+# in kernel/loa.fragment (user, PID and IPC namespaces). The official Kleaf
+# toolchain matters: the stock modules check symbol CRCs that are derived from
+# DWARF type information (CONFIG_GENDWARFKSYMS).
+#
+# Two builds, the same source: `baseline` with the stock configuration, `loa`
+# with the fragment. The `check` job fails when any exported symbol's CRC differs
+# between them, which is what would make the stock Xiaomi and Qualcomm modules
+# refuse to load (issue #57). Nothing here touches a tablet.
+name: Kernel
+
+on:
+  pull_request:
+    paths: ["kernel/**", ".github/workflows/kernel.yml"]
+  workflow_dispatch:
+    inputs:
+      release:
+        description: Publish the build as the release kernel-<kernel release> (main only)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [baseline, loa]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/local/lib/android /opt/hostedtoolcache /usr/share/dotnet \
+            /opt/ghc /usr/local/.ghcup /usr/share/swift /usr/local/share/boost
+          sudo docker image prune -af >/dev/null 2>&1 || true
+          df -h /
+
+      - name: Fetch the kernel tree
+        run: |
+          mkdir -p ~/bin k
+          curl -fsSL --retry 5 https://storage.googleapis.com/git-repo-downloads/repo -o ~/bin/repo
+          chmod +x ~/bin/repo
+          cd k
+          ~/bin/repo init -q --depth=1 -u https://android.googlesource.com/kernel/manifest -b common-android16-6.12-2026-03
+          cp "$GITHUB_WORKSPACE/kernel/manifest.xml" .repo/manifests/loa-pinned.xml
+          ~/bin/repo init -q -m loa-pinned.xml
+          for i in 1 2 3; do
+            ~/bin/repo sync -q -c --no-tags --no-clone-bundle -j4 && break
+            [ "$i" = 3 ] && exit 1
+            sleep 60
+          done
+          git -C common log -1 --format='common: %H %s'
+
+      - name: Build
+        working-directory: k
+        run: |
+          flag=
+          if [ "${{ matrix.variant }}" = loa ]; then
+            "$GITHUB_WORKSPACE/kernel/prepare.sh" "$(cat "$GITHUB_WORKSPACE/kernel/VERSION")"
+            mkdir loa
+            echo 'exports_files(["loa.fragment"])' > loa/BUILD.bazel
+            cp "$GITHUB_WORKSPACE/kernel/loa.fragment" loa/
+            flag=--defconfig_fragment=//loa:loa.fragment
+            git -C common diff > "$GITHUB_WORKSPACE/common.diff"
+          fi
+          tools/bazel run --config=fast $flag //common:kernel_aarch64_dist -- \
+            --destdir="$GITHUB_WORKSPACE/dist"
+
+      - name: Collect
+        run: |
+          mkdir -p out/symvers out/kernel
+          cp dist/vmlinux.symvers dist/kernel_aarch64_Module.symvers out/symvers/
+          [ "${{ matrix.variant }}" = loa ] || exit 0
+          want="6.12.69-android16-6-$(cat kernel/VERSION)-4k"
+          got=$(strings dist/Image | sed -n 's/^Linux version \([^ ]*\) .*/\1/p' | head -1)
+          echo "kernel release: $got"
+          [ "$got" = "$want" ] || { echo "expected $want"; exit 1; }
+          k/common/scripts/extract-ikconfig dist/Image > out/kernel/kernel.config
+          while read -r o; do grep -qxF "$o" out/kernel/kernel.config || { echo "not in the config: $o"; exit 1; }; done < kernel/loa.fragment
+          cp dist/boot-gz.img dist/system_dlkm_staging_archive.tar.gz common.diff kernel/manifest.xml kernel/loa.fragment out/kernel/
+          cp dist/vmlinux.symvers dist/kernel_aarch64_Module.symvers out/kernel/
+          echo "$got" > out/kernel/RELEASE
+          (cd out/kernel && sha256sum -- * > ../SHA256SUMS && mv ../SHA256SUMS .)
+          ls -la out/kernel
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: symvers-${{ matrix.variant }}
+          path: out/symvers
+          retention-days: 30
+
+      - uses: actions/upload-artifact@v4
+        if: matrix.variant == 'loa'
+        with:
+          name: kernel
+          path: out/kernel
+          retention-days: 30
+
+  check:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: symvers-*
+          path: symvers
+      - run: kernel/compare-symvers.py symvers/symvers-baseline symvers/symvers-loa
+
+  release:
+    needs: check
+    if: github.event_name == 'workflow_dispatch' && inputs.release && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: kernel
+          path: kernel
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd kernel
+          sha256sum -c SHA256SUMS
+          r=$(cat RELEASE)
+          gh release create "kernel-$r" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --latest=false \
+            --title "Kernel $r" \
+            --notes "Android common kernel android16-6.12-2026-03 (pinned in manifest.xml) with loa.fragment and common.diff applied. Exported symbol CRCs equal the stock configuration's. Install with tools/install-kernel.sh; see docs/maintenance.md." \
+            -- *
