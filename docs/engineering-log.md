@@ -1694,7 +1694,13 @@ nothing. Each fix uncovered the next cause:
 - Not checked: touch, pen, sound, the keyboard cover, suspend and resume, double tap,
   battery life and heat without Xiaomi's 12 kernel-side options (#57 lists them);
   Android started with Volume Up on the rebuilt kernel; a from-scratch root image
-  booted first on the rebuilt kernel; the 12 GB tablet (not touched; its slot may hold
-  a different stock build, which `loa-kernel` would refuse); Flatpak, Podman and
+  booted first on the rebuilt kernel; Flatpak, Podman and
   Docker (not installed); the two new options at run time. The power baselines of
   #71 and #73 were measured on the stock kernel.
+- Later the same day, at the owner's request, the 12 GB tablet (slot b): its stock
+  `boot_b` is byte-identical to the 8 GB tablet's (sha256 `679a1158...`). Installed the
+  same build; cold boot: 648 modules, `loaded=342 failed=7` (343 on the stock kernel just
+  before; the 8 GB tablet showed both numbers on the stock kernel in #57), no failed
+  units, no module messages, Wi-Fi, Bluetooth, charging, `unshare -U -r`,
+  `bwrap --unshare-all`, `codex sandbox`, `PrivateUsers=yes`. The Android round trip was
+  not repeated there.
