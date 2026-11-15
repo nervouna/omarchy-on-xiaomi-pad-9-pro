@@ -1779,4 +1779,26 @@ nothing. Each fix uncovered the next cause:
   `apiKey` with `$NAME` interpolation; `samplingParams` for temperature), agent dir from
   `PI_CODING_AGENT_DIR`. Its docs promise interpolation only for `apiKey` and headers,
   so the runner writes `baseUrl` into a file under `/run` for the block.
-- Not checked: whether the input cut survives a cable replug (needs hands).
+- First baseline, 2026-11-16 01:02 to 04:59 local time, 8 GB tablet as it was (image
+  `20261115-2`, kernel `nitian1`, `schedutil` with `rate_limit_us`
+  10000, RT clamp 0, bus floor at minimum), backlight 820 of 4095, 3 x 10 minutes per
+  workload, every block valid at the first attempt, the USB link up in every record:
+
+  | Workload | Mean | SD across repeats | Blocks |
+  |---|---|---|---|
+  | idle | 4.62 W | 0.017 W | 4.63 4.63 4.60 |
+  | replay | 4.70 W | 0.014 W | 4.69 4.69 4.72 |
+  | agent | 5.64 W | 0.061 W | 5.70 5.66 5.58 |
+
+  The replay repeats within 0.014 W, so it can rank changes of 0.1 W. It adds only
+  0.08 W to idle, though, and the agent draws 0.94 W more than the replay: one Pi
+  start every 11 s (56 runs of 7 turns and 10 tool calls per block, the same in all
+  three repeats at temperature 0) with CPU peaks of 74 to 84 C, against one edit and
+  reload every 30 s. The replay as specified is no stand-in for this agent load.
+- Memory stayed at 3.4 to 3.5 GB in use and swap at 0 in every block.
+- Each 10-minute block costs about 2 % charge; charging back at backlight 40 with
+  the services stopped took 35 to 46 minutes for 4 to 5 % (about 0.64 A into the
+  battery), so the run took 4 h, 2 h of it charging.
+- Not checked: whether the input cut survives a cable replug (needs hands); the
+  absolute offset of the live USB data link against a really unplugged tablet.
+
