@@ -1,0 +1,14 @@
+[
+  {"file": "src/style.css", "old": "color: #222;", "new": "color: #1a1a2e;", "old_mark": "color: #222;", "new_mark": "color: #1a1a2e;"},
+  {"file": "index.html", "old": "<h1 id=\"title\">Parts list</h1>", "new": "<h1 id=\"title\">Parts inventory</h1>", "old_mark": "id=\"title\">parts list<", "new_mark": "id=\"title\">parts inventory<"},
+  {"file": "src/format.js", "old": "`$${v.toFixed(2)}`", "new": "`${v.toFixed(2)} USD`", "old_mark": "stock value $", "new_mark": " usd</p>"},
+  {"file": "src/style.css", "old": "padding: 0.3rem 0.6rem;", "new": "padding: 0.4rem 0.8rem;", "old_mark": "padding: 0.3rem 0.6rem;", "new_mark": "padding: 0.4rem 0.8rem;"},
+  {"file": "src/main.js", "old": "parts, stock value", "new": "parts in stock, value", "old_mark": "parts, stock value", "new_mark": "parts in stock, value"},
+  {"file": "src/data.js", "old": "i < 240;", "new": "i < 300;", "old_mark": ">240 parts", "new_mark": ">300 parts"},
+  {"file": "src/style.css", "old": "font-size: 1.6rem;", "new": "font-size: 2rem;", "old_mark": "font-size: 1.6rem;", "new_mark": "font-size: 2rem;"},
+  {"file": "src/style.css", "old": "  color: #b00;\n}", "new": "  color: #b00;\n  font-weight: bold;\n}", "old_mark": "color: #b00;\n}", "new_mark": "font-weight: bold;"},
+  {"file": "src/main.js", "old": "tr.className = \"low\";", "new": "tr.className = \"low warn\";", "old_mark": "class=\"low\"", "new_mark": "class=\"low warn\""},
+  {"file": "index.html", "old": "<th>Price</th>", "new": "<th>Unit price</th>", "old_mark": "<th>price</th>", "new_mark": "<th>unit price</th>"},
+  {"file": "src/style.css", "old": "background: #fafafa;", "new": "background: #f0f4f8;", "old_mark": "background: #fafafa;", "new_mark": "background: #f0f4f8;"},
+  {"file": "src/data.js", "old": "\"spring\"", "new": "\"spring pin\"", "old_mark": ">spring m", "new_mark": ">spring pin m"}
+]
