@@ -1,6 +1,6 @@
 # Native Omarchy port status
 
-Last updated: 2026-11-12
+Last updated: 2026-11-15
 
 ## Goal
 
@@ -32,6 +32,7 @@ pen and Bluetooth headphones are not yet re-checked on 4.5
 | Speakers via PipeWire -> stock AGM/AudioReach | works (*user*) |
 | Volume buttons / Omarchy volume OSD | works (*user*) |
 | Boot stock Android on demand (`reboot-to-android`) | works |
+| User, PID and IPC namespaces (bubblewrap, Codex's sandbox, `PrivateUsers=`) | with the rebuilt kernel (`tools/install-kernel.sh`, optional); on the 8 GB tablet since 2026-11-15, the 12 GB one runs the stock kernel. Touch, pen, sound, cover and suspend on it are not yet confirmed by the owner |
 | Built-in microphones via PipeWire -> stock PAL | works |
 | Power button: short press screen off/on, hold -> Omarchy system menu | works (*user*) |
 | Brightness control (panel0-backlight) | works (*user*) |
