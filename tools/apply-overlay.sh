@@ -8,8 +8,8 @@
 # user-defaults/   files the user may customise: installed only if MISSING,
 #                  never overwritten.
 # Personal Hyprland config is never touched: device settings live in
-# /usr/share/loa/hypr/loa.lua, loaded by one line in ~/.config/hypr/hyprland.lua
-# (added if missing).
+# /usr/share/loa/hypr/loa.lua, loaded at the end of Omarchy's defaults
+# (default/hypr/omarchy.lua; the loader is added by /usr/lib/loa/omarchy-post-upgrade.sh).
 set -e
 D=$(cd "$(dirname "$0")/.." && pwd)
 MODE=apply; [ "$1" = --diff ] && MODE=diff
