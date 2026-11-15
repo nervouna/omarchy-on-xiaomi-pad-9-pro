@@ -1,0 +1,8 @@
+# The kernel this version of the port expects: a release of this repository
+# (.github/workflows/kernel.yml) and the sha256 of the two files loa-kernel
+# installs. It travels in the signed update bundle, so `loa-kernel update` trusts
+# these hashes and nothing else about the download.
+tag kernel-6.12.69-android16-6-nitian1-4k
+release 6.12.69-android16-6-nitian1-4k
+sha256 boot-gz.img 2a247a4e4c476c6af6d3e8a01445354cfedc8f311f12f90f4f58c038b841b48f
+sha256 system_dlkm_staging_archive.tar.gz d7207e7b8f6c9c8d88087c207ad90197d63f947f8e8360d6cbd6d3afb2c322a1

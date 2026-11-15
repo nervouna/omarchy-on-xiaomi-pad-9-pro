@@ -78,14 +78,13 @@ Details and caveats: [docs/status.md](docs/status.md).
 
 The port runs on the stock firmware and kernel modules, which set some hard limits:
 
-- **No user namespaces on the stock kernel.** Anything that needs them
-  (Flatpak/bubblewrap, rootless containers, the sandbox of coding agents, systemd's
-  `PrivateUsers=`) doesn't work there; the overlay switches `PrivateUsers=` off for the
-  affected services, and Chromium's setuid sandbox works. `tools/install-kernel.sh`
-  replaces the kernel with one this repo builds from the same public source, with
-  user, PID and IPC namespaces, and keeps the stock one a command away: see
-  [Kernel](docs/maintenance.md#kernel-loa-kernel). Still missing on it: the `pids`
-  cgroup controller and nftables.
+- **The kernel is rebuilt, the modules are stock.** The stock kernel has no user
+  namespaces, so bubblewrap/Flatpak, rootless containers, the sandbox of coding agents
+  and systemd's `PrivateUsers=` cannot work on it. The port therefore runs a kernel this
+  repo builds from the same public source with user, PID and IPC namespaces
+  (`sudo loa-kernel update`), and keeps the stock one a command away: see
+  [Kernel](docs/maintenance.md#kernel-loa-kernel). Only options that leave the stock
+  modules' ABI alone can be added: there is no `pids` cgroup controller and no nftables.
 - **No deep sleep.** Deep suspend fails on resume (PMIC errors), so the tablet uses
   s2idle, only on battery, with Wi-Fi and Bluetooth off while asleep. Opening the
   cover doesn't wake it: press a key or the power button.

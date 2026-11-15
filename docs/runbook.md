@@ -154,6 +154,8 @@ tools/personalize.sh [hostname]        # Wi-Fi MAC from persist, machine-id,
                                        # (rename later: hostnamectl set-hostname NAME)
 tools/tssh -t passwd omarchy           # sudo password (autologin doesn't need it)
 tools/apply-overlay.sh                 # bring the image up to the repo's overlay
+tools/install-kernel.sh                # the kernel with namespaces (maintenance.md, "Kernel");
+                                       # after the first boot, which imports the stock modules
 tools/tssh systemctl reboot
 ```
 

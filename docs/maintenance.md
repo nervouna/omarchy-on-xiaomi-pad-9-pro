@@ -279,15 +279,25 @@ built root with a throwaway key.
 ## Kernel (`loa-kernel`)
 
 The stock kernel has no user, PID or IPC namespaces, and they are built-in options:
-no module adds them. The tablets can run a kernel this repo builds instead: the public
+no module adds them. The tablets run a kernel this repo builds instead: the public
 Android common kernel the stock one was built from (branch `android16-6.12-2026-03`,
 6.12.69; every project pinned in `kernel/manifest.xml`) with `kernel/loa.fragment`
 (`USER_NS`, `PID_NS`, `POSIX_MQUEUE`, `IPC_NS`; also `FHANDLE`, which systemd expects, and
 the netfilter `addrtype` match, which Docker's rules need). Its release is
 `6.12.69-android16-6-<kernel/VERSION>-4k`, with `nitian1` as the first version
-("against heaven", after the device's codename `shuntian`, "with heaven"). The root image and the update bundle do not
-carry it: it is installed over USB, per tablet, and the stock kernel stays one command
-away. Everything in the overlay works on both kernels.
+("against heaven", after the device's codename `shuntian`, "with heaven").
+
+The kernel a version of this repo expects is named in
+`rootfs-overlay/usr/share/loa/kernel/pin`: the release tag, the release string and the
+sha256 of the two files that get installed. The root image and the update bundle carry
+the pin, not the kernel. A tablet gets the kernel when its owner runs
+`sudo loa-kernel update` (over the network) or `tools/install-kernel.sh` (over USB), and
+the stock kernel stays one command away.
+
+Omarchy still boots on the stock kernel now and then: the first boot of a fresh install,
+the boot after a visit to Android, after `loa-kernel restore`. So everything in the
+overlay works on both kernels, and the `no-userns.conf` drop-ins and the `chrome-sandbox`
+hook stay.
 
 **Why the stock modules still load.** The modules check a CRC per imported symbol
 (`CONFIG_MODVERSIONS`, derived from DWARF type information), not the release string.
@@ -312,18 +322,39 @@ gh workflow run kernel.yml --ref main -f release=true
 
 creates the release `kernel-<release>` with `boot-gz.img`, the GKI modules
 (`system_dlkm_staging_archive.tar.gz`), the configuration, the pinned manifest, the
-source diff and `SHA256SUMS`. A new build gets a new `kernel/VERSION` (`nitian2`, ...): the
+source diff and `SHA256SUMS`. Then put its tag, release string and the two sha256 values
+in the pin, in a pull request of its own. A new build gets a new `kernel/VERSION` (`nitian2`, ...): the
 GKI modules are signed with a key made for each build, so a kernel only loads its own.
 
-**Install.** With the tablet on USB, running Omarchy with the current overlay:
+**Install.** On the tablet, with a network connection:
 
 ```
-tools/install-kernel.sh             # the newest kernel-* release
+sudo loa-kernel update     # the pinned kernel, from its release
+sudo loa-kernel restore    # the stock kernel again
+sudo loa-kernel status
+```
+
+`update` downloads the two files to `/var/lib/loa/kernel/download` (a run that was cut
+off resumes), checks each against the pin's sha256 and the release string inside the
+image against the pin's, and writes nothing unless all three match. The pin came in the
+signed update bundle (or the image), so the download itself needs no signature. It
+refuses while a `loa-update` is on trial, so that a boot that fails has one cause.
+`loa-update check` and `loa-update` print a line when the pinned kernel is not the
+installed one; they never install it. Restart after it.
+
+A new kernel reaches the tablets as an update whose bundle carries a new pin: try
+`sudo loa-kernel update` on the 8 GB tablet during the canary, before promoting. Unlike a
+`loa-update`, a kernel that does not boot is not rolled back by the tablet (see below).
+
+With the tablet on USB instead:
+
+```
+tools/install-kernel.sh             # the kernel this checkout pins
 tools/install-kernel.sh --restore   # the stock kernel again
 ```
 
 It copies the slot's stock `boot` image to `backups/` on the Mac, then runs
-`loa-kernel install` on the tablet, which
+`loa-kernel install` on the tablet. Either way, the install
 
 - refuses unless the slot is marked successful and `boot` holds the stock kernel
   `6.12.69-android16-6-g586bfab1b9c5-abogki536749445-4k` (or a saved copy of it exists);
@@ -343,7 +374,9 @@ gzip-compressed kernel: the uncompressed one does not fit.
 image is saved.
 
 **If the tablet does not come up.** Hold Power + Volume Down for Fastboot, then
-`fastboot flash boot_<slot> backups/boot-stock-<hash>.img` and `fastboot reboot`. From a
+`fastboot flash boot_<slot> backups/boot-stock-<hash>.img` and `fastboot reboot`. This
+needs a computer with `fastboot` and that file: away from the Mac, carry a copy
+(`/var/lib/loa/kernel/boot_<slot>-stock.img` on the tablet is the same image). From a
 running system: `sudo loa-kernel restore`. Both module trees stay, so either kernel
 boots.
 
