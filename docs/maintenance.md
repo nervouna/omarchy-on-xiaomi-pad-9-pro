@@ -603,8 +603,10 @@ terminal, all under `/opt/loa-powertest`, nothing in the user's home):
   page, check again. A repeat with a failed cycle is invalid. No model in the loop.
 - `agent` (the cross-check): Pi Agent with `tools/powertest/prompt.txt` against
   the LAN endpoint, temperature 0, looped with a project reset until the block
-  ends. A 503 or any other endpoint error makes the repeat invalid; it is rerun
-  once (`--max-attempts`). **The endpoint may be used only from 00:00 to 08:00
+  ends. The endpoint gets one warm-up request before every agent block (its first
+  answer after 5 idle minutes takes about 17 s). A failed warm-up, a 503 or any
+  other endpoint error makes the repeat invalid; an invalid repeat of any workload
+  is run again, up to 3 attempts in all (`--max-attempts`). **The endpoint may be used only from 00:00 to 08:00
   Mac local time**: outside that window, or when a block would end after 08:00,
   the agent blocks are skipped with a line in the report (`--agent-anytime` is for
   a person at the keyboard only). The endpoint's address, model and key are in
@@ -618,24 +620,42 @@ terminal, all under `/opt/loa-powertest`, nothing in the user's home):
 (it honours one, checked with a test listener; the inhibitor ends with its
 process); Omarchy's screensaver timer off (`omarchy-toggle-idle stay-awake`,
 put back only if it was off before); each block starts between 85 and 90 %
-charge: the runner drains with the input cut, or charges with the screen off;
+charge: the runner drains with the input cut, or charges to 88 % with the screen
+on at backlight 40 and the services stopped (not with the screen off: then the
+Mac loses the USB link for minutes,
+[#72](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/72));
 kernel, governor and tunables, bus floor, `sleep_disabled`, image, package
 versions, memory and swap at the start and end of each block, battery and CPU
 temperature, and a hash of the Wi-Fi network's name. Each block: services
 started fresh, 30 s settle, input cut and checked (`suspend_status` 1, USB
 current 0), `loa-powerlog` every 10 s with 1 s samples, the first 20 s
-discarded, input resumed and checked.
+discarded, input resumed and checked. A block is invalid when the USB current
+was not 0 or the battery did not discharge in every record, the tablet slept,
+the screen went off, the screensaver started or the backlight changed, or its
+workload failed. The report also counts the records in which `usb0` moved any
+bytes: a block with the USB link down for part of it is still measured.
+
+**USB link drops.** The link to the Mac drops now and then for seconds to minutes
+(#72), also with the charger input cut and the screen on (seen in three of nine
+development blocks on 2026-11-16, 35 s to 5.5 minutes each). So the tablet runs each
+block by itself: `block start` also starts a unit that ends the block and resumes
+the input after its time, and the runner collects the result when the link is
+back. During a block the runner makes no SSH logins. A run whose tablet side was
+restored meanwhile (watchdog) waits for the tablet, starts again and repeats the
+block.
 
 **Safety.** The runner holds `/run/loa-powertest/active` on the tablet for the
 run and refuses to start while `/var/lib/loa-update/pending` or `/loa/dev-watchdog`
 exists. Everything is restored by `loa-powertest.py end` (input, backlight,
 auto-brightness, inhibitor, screensaver timer, test processes, lock). It also
-runs on its own: within seconds when the runner dies (the runner keeps an SSH
-session open whose end of file the tablet reads), from a watchdog unit when no
-heartbeat came for 180 s (the USB link drops for half a minute now and then,
-[#72](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/72)), when
-the run overruns, when the input stays cut longer than its block, or below 30 %
-charge. `/var/log/loa-powertest/restore.log` records each restore.
+runs on its own: when the runner dies (it keeps an SSH session open whose end of
+file the tablet reads; after 20 s without a successor session the tablet
+restores: checked with `kill -9` on the runner 60 s into a block, charging again
+after 21 s, everything restored after 26 s), and from a watchdog unit when no
+heartbeat came for 900 s (the Mac or the link is gone for good), when the run
+overruns, or below 30 % charge with the input cut. Every cut also ends on the
+tablet: at the end of its block (plus a 120 s backstop) or, for a drain, at its
+charge target. `/var/log/loa-powertest/restore.log` records each restore.
 `tools/powertest/tablet/loa-powertest.py end` by hand restores a tablet left in
 any state.
 
