@@ -1630,3 +1630,28 @@ nothing. Each fix uncovered the next cause:
 - Not checked: a double tap from s2idle after an idle screen-off (Hyprland takes the
   key instead of loa-power-key); closing the cover over a dark panel on the tablet
   itself (the panel on/off sequence was run by hand).
+
+### 2026-11-15: zram sized to RAM, DP link ceiling at HBR3 at boot (#80)
+
+- Two hand-made tunings of the 12 GB tablet, kept out of the image on 2026-09-28 (the
+  zram override and `dp-hbr3.service`), become part of the overlay.
+- zram: `zram-setup.sh` sets disksize to MemTotal instead of RAM/2 (the 2026-09-27
+  choice). At half of RAM the 12 GB tablet's zram filled within two hours of normal use
+  (earlyoom log); zram at about the size of RAM has run there since late September.
+  earlyoom's thresholds are percentages of RAM and swap, so they still hold.
+- DisplayPort: the vendor driver caps the link at HBR2
+  (`/sys/kernel/debug/drm_dp/max_lclk_khz` = 540000). Through a USB-C dock that gives the
+  display two DP lanes, a 4K 60 Hz monitor then trained at 18 bpp and stayed black; with
+  810000 written before the desktop started it trained at 24 bpp (30LR 2Ln) with a
+  picture. New `loa-dp-link.service` (oneshot, after `loa-modules.service` and
+  `sys-kernel-debug.mount`, before `loa-desktop.service`, enabled by a
+  `multi-user.target.wants` link) runs `dp-link.sh`: waits up to 10 s for the node,
+  writes 810000, logs before and after. A missing node is logged and exits 0; a refused
+  write exits 1.
+- On the 12 GB tablet the old `dp-hbr3.service` and the zram override may still be
+  installed; they write the same values.
+- Open: hot-plug. A dock already connected at boot may have trained at HBR2 before the
+  write. Also still open: the resets on some dock attaches (2026-09-28 entry). Not done:
+  a disk swap file.
+- Not checked: nothing run on a tablet yet (zram size after a reboot, the node value,
+  the unit state, a 4K 60 Hz picture after a hot-plug).

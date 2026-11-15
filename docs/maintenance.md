@@ -360,7 +360,7 @@ Keep backups out of this repository: they hold secrets.
 ## Memory
 
 - 7.3 GiB usable on the 8 GB model.
-- zram (`loa-zram.service`, zstd, RAM/2; zram-generator is masked because systemd sees no udev device events here) and earlyoom
+- zram (`loa-zram.service`, zstd, sized to RAM; zram-generator is masked because systemd sees no udev device events here) and earlyoom
   (`/etc/default/earlyoom`) are the safety net. systemd-oomd can't work here:
   the bootloader sets `cgroup_disable=pressure`.
 - The journal is capped at 500 MB, because the keyboard driver logs every touchpad packet.
