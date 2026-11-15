@@ -1,0 +1,17 @@
+#!/bin/sh
+# Wrapper ahead of /usr/bin/omarchy-hook. Omarchy reads hooks only from
+# ~/.config/omarchy/hooks/, so a hook of ours there is lost whenever that
+# directory is reset. For pre-refresh-pacman (omarchy-refresh-pacman has just
+# copied its x86_64 template over /etc/pacman.conf) put back this tablet's
+# pacman settings first, then run Omarchy's hook with the same arguments.
+# LOA_HOOK_REAL and LOA_SETUP_REPO exist for tests.
+real=${LOA_HOOK_REAL:-/usr/bin/omarchy-hook}
+step=${LOA_SETUP_REPO:-/usr/lib/loa/setup-omarchy-repo.sh}
+if [ "${1:-}" = pre-refresh-pacman ]; then
+    if [ "$(id -u)" = 0 ]; then
+        "$step" || echo "omarchy-hook: $step failed; continuing" >&2
+    else
+        sudo "$step" || echo "omarchy-hook: $step failed; continuing" >&2
+    fi
+fi
+exec "$real" "$@"
