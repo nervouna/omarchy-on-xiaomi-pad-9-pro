@@ -1,0 +1,12 @@
+[Unit]
+Description=LoA DisplayPort link ceiling at HBR3 (4K 60 Hz over two lanes)
+After=loa-modules.service sys-kernel-debug.mount
+Before=loa-desktop.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/lib/loa/dp-link.sh
+
+[Install]
+WantedBy=multi-user.target

@@ -24,6 +24,7 @@ pen and Bluetooth headphones are not yet re-checked on 4.5
 | --- | --- |
 | Automatic boot into native Omarchy (systemd, Hyprland, Omarchy shell) | works; root on its own `omarchy` partition (64 GiB on the 8 GB tablet, 192 GiB on the 12 GB one, carved from userdata); `ramdump` holds a fallback root on both |
 | Display 3200x2136@120, no underruns | works (*user*) |
+| External display (USB-C DP Alt Mode, through a dock) | DP link ceiling raised from HBR2 to HBR3 at boot (`loa-dp-link`), so 4K 60 Hz over a two-lane dock trains at 24 bpp instead of 18 bpp (black screen) ([#80](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/80)); not yet checked on this image. Open: a dock connected at boot may train at HBR2 before the write; resets on some dock or monitor attaches (2026-09-28 log entry) |
 | GPU: Adreno 829 via KGSL Mesa (GL + Vulkan) for Hyprland and apps | works (*user*: smooth) |
 | Touch (Xiaomi THP) with correct orientation | works (*user*) |
 | Wi-Fi (NetworkManager + wpa_supplicant), NTP | works |
@@ -109,6 +110,6 @@ Not tracked as an issue:
 - Omarchy's Wi-Fi UI expects iwd, which can't run (the kernel lacks AF_ALG).
   NetworkManager is used instead; the Omarchy network panel uses
   NetworkManager directly.
-- Memory: 8 GB model = 7.3 GiB usable. zram (3.6 GiB) + earlyoom keep heavy
+- Memory: 8 GB model = 7.3 GiB usable. zram (sized to RAM) + earlyoom keep heavy
   Electron/chat app mixes from freezing the tablet; a 12 GB model is the
   real fix.

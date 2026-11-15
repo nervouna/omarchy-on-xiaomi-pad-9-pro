@@ -2,6 +2,9 @@
 # PostTransaction for the omarchy/omarchy-settings packages (95-loa-omarchy.hook):
 #  1. re-apply /usr/share/loa/omarchy/patches/*.patch (the package update just
 #     replaced the patched files); a patch that no longer applies is reported;
+#  1b. make Omarchy's default/hypr/omarchy.lua load the device settings
+#     (/usr/share/loa/hypr/loa.lua) as its last step: appended, not patched, so
+#     it doesn't depend on the lines Omarchy ends the file with;
 #  2. mark the migrations in /usr/share/loa/omarchy/migrations-skip as done;
 #  3. list pending migrations that touch boot, kernel modules, sshd or groups,
 #     for review before `omarchy-migrate` runs them (Omarchy detects this tablet
@@ -35,6 +38,27 @@ for p in "$L"/patches/*.patch; do
     done
     [ -n "$done" ] || echo "LoA: WARNING: $n no longer applies to this Omarchy (fixed upstream? update $L/patches)"
 done
+
+# Omarchy has no system include point for Hyprland settings. The loader goes at
+# the end of its defaults: after them, before the user's ~/.config/hypr files.
+# LOA_OMARCHY_LUA overrides the target (for testing on a copy).
+O=${LOA_OMARCHY_LUA:-/usr/share/omarchy/default/hypr/omarchy.lua}
+if [ -f "$O" ] && ! grep -qF /usr/share/loa/hypr/loa.lua "$O"; then
+    { [ -z "$(tail -c 1 "$O")" ] || echo
+      cat <<'EOF'
+
+-- LoA device settings (tablet panel, touch, pen, keys, session processes),
+-- added by /usr/lib/loa/omarchy-post-upgrade.sh. The user's files still win.
+local loa = "/usr/share/loa/hypr/loa.lua"
+local loa_file = io.open(loa, "r")
+if loa_file then
+  loa_file:close()
+  dofile(loa)
+end
+EOF
+    } >> "$O" && echo "LoA: omarchy.lua loads the device settings" ||
+        echo "LoA: WARNING: could not add the device settings loader to $O"
+fi
 
 for home in /home/*; do
     st=$home/.local/state/omarchy

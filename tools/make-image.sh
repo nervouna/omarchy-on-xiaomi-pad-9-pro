@@ -6,7 +6,7 @@
 #   tools/make-image.sh --personal [--apply]   full clone minus per-device identity
 #   --reset-hypr (with --clean): personal Hyprland files (input, bindings, looknfeel,
 #   monitors, autostart) become Omarchy's stock templates, for someone else's tablet.
-#   hyprland.lua keeps the loa.lua loader line, so the device settings still load.
+#   The device settings still load: Omarchy's defaults load loa.lua themselves.
 #
 # Without --apply it only reports what would be copied/scrubbed (sizes).
 # The image is staged on the tablet's `ramdump` partition (17 GiB): its current

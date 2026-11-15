@@ -10,6 +10,9 @@
 #                  or differ from the installed copy ("differs from the default:
 #                  <path>"). Only the first install (the image build,
 #                  LOA_FIRST_INSTALL=1) seeds them.
+# Device settings for Hyprland live in /usr/share/loa/hypr/loa.lua, loaded at the
+# end of Omarchy's defaults (default/hypr/omarchy.lua; the loader is added by
+# /usr/lib/loa/omarchy-post-upgrade.sh).
 # /etc/hostname is not ours: rename a tablet with hostnamectl set-hostname.
 set -e
 D=$(cd "$(dirname "$0")/.." && pwd)
