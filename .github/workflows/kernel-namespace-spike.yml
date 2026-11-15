@@ -21,18 +21,18 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - variant: baseline
-            config: ""
-          - variant: userns
-            config: "CONFIG_USER_NS=y"
-          - variant: pidns
-            config: "CONFIG_PID_NS=y"
-          - variant: ipcns
-            config: "CONFIG_POSIX_MQUEUE=y CONFIG_IPC_NS=y"
-          - variant: sysvipc
-            config: "CONFIG_SYSVIPC=y"
-          - variant: all
+          - variant: loa
             config: "CONFIG_USER_NS=y CONFIG_PID_NS=y CONFIG_POSIX_MQUEUE=y CONFIG_IPC_NS=y"
+          - variant: noprot
+            config: "CONFIG_USER_NS=y CONFIG_PID_NS=y CONFIG_POSIX_MQUEUE=y CONFIG_IPC_NS=y CONFIG_MODULE_SIG_PROTECT=n"
+          - variant: pids
+            config: "CONFIG_USER_NS=y CONFIG_PID_NS=y CONFIG_POSIX_MQUEUE=y CONFIG_IPC_NS=y CONFIG_CGROUP_PIDS=y"
+          - variant: fhandle
+            config: "CONFIG_USER_NS=y CONFIG_PID_NS=y CONFIG_POSIX_MQUEUE=y CONFIG_IPC_NS=y CONFIG_FHANDLE=y"
+          - variant: nft
+            config: "CONFIG_USER_NS=y CONFIG_PID_NS=y CONFIG_POSIX_MQUEUE=y CONFIG_IPC_NS=y CONFIG_NF_TABLES=y CONFIG_NF_TABLES_INET=y CONFIG_NF_TABLES_IPV4=y CONFIG_NF_TABLES_IPV6=y CONFIG_NFT_CT=y CONFIG_NFT_NAT=y CONFIG_NFT_MASQ=y CONFIG_NFT_COMPAT=y CONFIG_NFT_FIB_INET=y CONFIG_NFT_REJECT=y"
+          - variant: addrtype
+            config: "CONFIG_USER_NS=y CONFIG_PID_NS=y CONFIG_POSIX_MQUEUE=y CONFIG_IPC_NS=y CONFIG_NETFILTER_XT_MATCH_ADDRTYPE=y"
     env:
       MANIFEST_BRANCH: common-android16-6.12-2026-03
       KCONFIG: ${{ matrix.config }}
@@ -67,7 +67,7 @@ jobs:
           if [ -n "$KCONFIG" ]; then
             mkdir spike
             echo 'exports_files(["spike.fragment"])' > spike/BUILD.bazel
-            printf '%s\n' $KCONFIG > spike/spike.fragment
+            for o in $KCONFIG; do case $o in *=n) echo "# ${o%=n} is not set" ;; *) echo "$o" ;; esac; done > spike/spike.fragment
             cat spike/spike.fragment
             flag=--defconfig_fragment=//spike:spike.fragment
           fi
@@ -79,6 +79,9 @@ jobs:
             printf '  %s\n' init_ipc_ns put_ipc_ns >> common/gki/aarch64/symbols/base
             git -C common diff --stat ;;
           esac
+          # A fixed release string instead of Kleaf's "-maybe-dirty".
+          grep -q "echo '-maybe-dirty'" build/kernel/kleaf/impl/stamp.bzl
+          sed -i "s/echo '-maybe-dirty'/echo '-loa1'/" build/kernel/kleaf/impl/stamp.bzl
           tools/bazel run --config=fast $flag //common:kernel_aarch64_dist -- \
             --destdir="$GITHUB_WORKSPACE/dist"
 
@@ -88,6 +91,7 @@ jobs:
           mkdir -p out
           ls -la dist || exit 0
           k/common/scripts/extract-ikconfig dist/Image > out/dot-config || true
+          strings dist/Image | grep -m1 'Linux version' || true
           grep -E 'CONFIG_(USER_NS|PID_NS|IPC_NS|SYSVIPC|POSIX_MQUEUE|NAMESPACES)\b' out/dot-config || true
           (cd k && ~/bin/repo manifest -r -o "$GITHUB_WORKSPACE/out/manifest.xml") || true
           find dist -maxdepth 1 -type f -size -200M ! -name 'vmlinux' ! -name '*unstripped*' \
