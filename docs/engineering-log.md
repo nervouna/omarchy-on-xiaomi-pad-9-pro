@@ -1704,3 +1704,7 @@ nothing. Each fix uncovered the next cause:
   units, no module messages, Wi-Fi, Bluetooth, charging, `unshare -U -r`,
   `bwrap --unshare-all`, `codex sandbox`, `PrivateUsers=yes`. The Android round trip was
   not repeated there.
+- Renamed before the first release, at the owner's wish: the builds are `nitian1`,
+  `nitian2`, ... ("against heaven"; the codename `shuntian` reads "with heaven"). The
+  `loa1` build above was a pull request artifact and was never published; both tablets
+  get `nitian1` from the release.

@@ -284,7 +284,8 @@ Android common kernel the stock one was built from (branch `android16-6.12-2026-
 6.12.69; every project pinned in `kernel/manifest.xml`) with `kernel/loa.fragment`
 (`USER_NS`, `PID_NS`, `POSIX_MQUEUE`, `IPC_NS`; also `FHANDLE`, which systemd expects, and
 the netfilter `addrtype` match, which Docker's rules need). Its release is
-`6.12.69-android16-6-<kernel/VERSION>-4k`. The root image and the update bundle do not
+`6.12.69-android16-6-<kernel/VERSION>-4k`, with `nitian1` as the first version
+("against heaven", after the device's codename `shuntian`, "with heaven"). The root image and the update bundle do not
 carry it: it is installed over USB, per tablet, and the stock kernel stays one command
 away. Everything in the overlay works on both kernels.
 
@@ -311,7 +312,7 @@ gh workflow run kernel.yml --ref main -f release=true
 
 creates the release `kernel-<release>` with `boot-gz.img`, the GKI modules
 (`system_dlkm_staging_archive.tar.gz`), the configuration, the pinned manifest, the
-source diff and `SHA256SUMS`. A new build gets a new `kernel/VERSION` (`loa2`, ...): the
+source diff and `SHA256SUMS`. A new build gets a new `kernel/VERSION` (`nitian2`, ...): the
 GKI modules are signed with a key made for each build, so a kernel only loads its own.
 
 **Install.** With the tablet on USB, running Omarchy with the current overlay:

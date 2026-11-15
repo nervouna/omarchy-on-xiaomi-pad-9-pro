@@ -35,7 +35,8 @@ restart after that runs it.
 import gzip, hashlib, os, re, shutil, struct, subprocess, sys, tarfile
 
 STOCK = "6.12.69-android16-6-g586bfab1b9c5-abogki536749445-4k"
-OURS = re.compile(r"^6\.12\.69-android16-6-loa\d+-4k$")
+# "nitian" (against heaven) answers the device's codename, shuntian (with heaven).
+OURS = re.compile(r"^6\.12\.69-android16-6-nitian\d+-4k$")
 STATE = "/var/lib/loa/kernel"
 MODULES = "/usr/lib/modules"
 ARCHIVE = "system_dlkm_staging_archive.tar.gz"
