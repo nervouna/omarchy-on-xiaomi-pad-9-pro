@@ -541,6 +541,7 @@ def cmd_block(a):
         out({"ok": True, **start})
         return
     # stop
+    powerlog_running = unit_active("powerlog")  # False: it died before the block's end
     stop_units("driver")
     time.sleep(1)
     stop_units("powerlog")
@@ -550,6 +551,7 @@ def cmd_block(a):
     start = json.loads(rd(f"{logdir}/{a.tag}.start.json") or "{}")
     mons = monitors()
     r = {"start": start, "end": {"t_end": time.time(), **meminfo(), **power(), "backlight": num(BL),
+                                 "powerlog_running": powerlog_running,
                                  "screen_on": bool(mons) and all(m.get("dpmsStatus") for m in mons),
                                  "screensaver": subprocess.run(["pgrep", "-f", "org.omarchy.screensaver"],
                                                                capture_output=True).returncode == 0},

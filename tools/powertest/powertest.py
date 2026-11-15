@@ -172,8 +172,9 @@ def block_power(path, discard, seconds):
                 hdr = r
             else:
                 recs.append(r)
+    interval = hdr.get("interval", 10)
     if not recs:
-        return None
+        return {"mean_w": None, "records": 0, "covered_s": 0, "expected_s": seconds - discard, "interval": interval}
     t0 = hdr.get("t", recs[0]["t"] - recs[0]["awake_s"])
     # Only the block itself: after the discard, and not past its end (a block whose
     # stop came late because the USB link was down keeps running on the tablet).
@@ -182,8 +183,10 @@ def block_power(path, discard, seconds):
     usb = max((r["avg"].get("usb_ua") or 0) for r in use) if use else None
     temps = [r["temp_mc"].get("battery", 0) / 1000 for r in use if r.get("temp_mc")]
     cpu = [r["temp_mc"].get("cpu-max", 0) / 1000 for r in use if r.get("temp_mc")]
+    # The time the used records cover, from the start of the first to the end of the last.
+    covered = use[-1]["t"] - (use[0]["t"] - use[0]["awake_s"]) if use else 0
     return {"mean_w": statistics.fmean(w) if w else None, "sd_within_w": statistics.pstdev(w) if len(w) > 1 else 0,
-            "records": len(use), "usb_ua_max": usb, "min_bat_ua": min(r["avg"]["bat_ua"] for r in use) if use else None,
+            "records": len(use), "covered_s": round(covered, 1), "expected_s": seconds - discard, "interval": interval, "usb_ua_max": usb, "min_bat_ua": min(r["avg"]["bat_ua"] for r in use) if use else None,
             "battery_c": [round(min(temps), 1), round(max(temps), 1)] if temps else None,
             "cpu_max_c": round(max(cpu), 1) if cpu else None,
             "slept_s": round(sum(r.get("asleep_s", 0) for r in use), 1)}
@@ -204,10 +207,19 @@ def link_records(path):
     return [up, n]
 
 
+COVERAGE = 0.9
+
+
 def block_valid(b):
     p = b.get("power") or {}
     if not p or p.get("mean_w") is None:
-        return "no power records"
+        return "no power records after the discard"
+    # Coverage: at least 90 % of the measured time, with one sample interval of slack
+    # (a power log that died early leaves a short file that would otherwise pass).
+    if p["covered_s"] < COVERAGE * p["expected_s"] - p["interval"]:
+        return f"power log covers {p['covered_s']:.0f} s of {p['expected_s']:.0f} s"
+    if (b.get("result") or {}).get("end", {}).get("powerlog_running") is False:
+        return "the power log had stopped before the block ended"
     if p["usb_ua_max"] != 0:
         return f"USB current not 0 during the block ({p['usb_ua_max']} uA)"
     if p["min_bat_ua"] is not None and p["min_bat_ua"] <= 0:
@@ -515,7 +527,9 @@ def cmd_run(a):
                     meta["blocks"].append(b)
                     save()
                     p = b.get("power") or {}
-                    log(f"{tag}: {p.get('mean_w', 0):.3f} W" + (f" INVALID: {b['invalid']}" if b["invalid"] else ""))
+                    mw = p.get("mean_w")
+                    log(f"{tag}: " + (f"{mw:.3f} W" if mw is not None else "no mean")
+                        + (f" INVALID: {b['invalid']}" if b["invalid"] else ""))
                     if not b["invalid"]:
                         break
         meta["notes"].append(f"input after the run: {ctl('hb', check=False).get('suspend_status')} (suspend_status)")
