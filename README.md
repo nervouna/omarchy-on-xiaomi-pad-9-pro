@@ -165,8 +165,8 @@ fastboot flash init_boot_<slot> images/init_boot-stock-OS4.0.5.0.img
 | Path | What |
 |---|---|
 | `boot/` | Stage-1 init (busybox) + `loa-helper`, and `build-init-boot.py`, which packs them with the stock first-stage ramdisk into `init_boot` |
-| `rootfs-overlay/` | System files the port owns (systemd units, daemons in `usr/lib/loa`, `/usr/share/loa/hypr/loa.lua` device settings, PipeWire/WirePlumber drop-ins in `/etc`). `tools/apply-overlay.sh` installs/updates them, backing up anything it replaces (`--diff` previews) |
-| `user-defaults/` | Files the user may customise (hypridle, Chromium flags, fcitx5 profile): installed only if missing, never overwritten |
+| `rootfs-overlay/` | System files the port owns (systemd units, daemons in `usr/lib/loa`, `/usr/share/loa/hypr/loa.lua` device settings, PipeWire/WirePlumber drop-ins in `/etc`). `tools/apply-overlay.sh` installs/updates them, backing up anything it replaces (`--diff` previews); `/etc/hostname` is not among them |
+| `user-defaults/` | Files the user may customise (hypridle, Chromium flags, fcitx5 profile): seeded only by the first install (the image build); an update never touches `/home` and only lists the ones that differ |
 | `builder/` | From-scratch root image builder: package list, pinned sources, build scripts |
 | `tools/` | Mac-side scripts: `tssh` (SSH over USB), install/image/repartition/personalize, `build.sh` for the native helpers (`tools/src`) |
 | `patches/` | Aquamarine patch (split primary plane, DMA-heap scanout, forced MODE_ID); the small Omarchy patches live in `rootfs-overlay/usr/share/loa/omarchy/patches/` and are re-applied after each Omarchy update |

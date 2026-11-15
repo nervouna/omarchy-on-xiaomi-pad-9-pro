@@ -24,7 +24,7 @@ sed -i 's/^#en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen
 locale-gen >/dev/null
 echo LANG=en_US.UTF-8 > /etc/locale.conf
 ln -sfn /usr/share/zoneinfo/UTC /etc/localtime
-echo shuntian > /etc/hostname
+echo shuntian > /etc/hostname   # the default; the overlay does not own it (rename: hostnamectl set-hostname)
 systemctl set-default graphical.target
 useradd --create-home --uid 1000 --user-group --shell /bin/bash --comment Omarchy omarchy
 usermod -aG wheel,audio,input,render,video,seat,rfkill omarchy
@@ -53,7 +53,7 @@ chown -R 1000:1000 $H; chmod 700 $H
 
 # The LoA overlay, exactly as tools/apply-overlay.sh installs it on a tablet.
 cp $B/loa-overlay.tar /run/loa-overlay.tar   # the build mounts a fresh /run
-sh $B/overlay-install.sh apply "$PUB"
+LOA_FIRST_INSTALL=1 sh $B/overlay-install.sh apply "$PUB"   # the one run that seeds the home directory
 /usr/lib/loa/omarchy-post-upgrade.sh   # our Omarchy patches (the pacman hook came with the overlay)
 
 # Identity and leftovers: each tablet generates its own (tools/personalize.sh).
