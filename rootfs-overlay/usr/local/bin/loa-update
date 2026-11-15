@@ -211,6 +211,7 @@ apply() {
     echo "$NEW" > $S/version; rm -f $S/last-rollback
     cat /proc/sys/kernel/random/boot_id > $S/pending-boot; echo applied > $S/pending; sync
     say "installed $NEW (was ${CUR:-not recorded}). Reboot to use it."
+    /usr/local/bin/loa-kernel hint 2>/dev/null | sed 's/^/loa-update: /' || true
     say "That boot is a trial: the update is kept 10 minutes after the desktop came up, time asleep included (or after: sudo loa-update confirm)."
     say "It is rolled back by itself if the tablet reboots or powers off before then, or if the desktop is not up 5 minutes into the boot (asleep included)."
     say "Screen dark or touch dead after the reboot: hold Power until the tablet restarts, within the 10 minutes; that boot rolls the update back."
@@ -399,7 +400,8 @@ case $CMD in
         state
         fetch; verify; rm -rf $B
         say "latest:    $NEW (${TAG:-latest release})"
-        if newer "$NEW" "$CUR"; then say "an update is available: sudo loa-update${TAG:+ --tag $TAG}"; else say "up to date"; fi ;;
+        if newer "$NEW" "$CUR"; then say "an update is available: sudo loa-update${TAG:+ --tag $TAG}"; else say "up to date"; fi
+        /usr/local/bin/loa-kernel hint 2>/dev/null | sed 's/^/loa-update: /' || true ;;
     diff)
         fetch; verify; gate; aq_plan
         say "bundle $NEW, installed ${CUR:-not recorded}"

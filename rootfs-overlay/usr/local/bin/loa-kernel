@@ -3,6 +3,8 @@
 stock kernel back.
 
   loa-kernel status
+  loa-kernel update          download the kernel this version of the port expects
+                             (/usr/share/loa/kernel/pin) from its release and install it
   loa-kernel backup          save the stock boot image of the active slot, print its path
   loa-kernel install [DIR]   DIR holds boot-gz.img and system_dlkm_staging_archive.tar.gz;
                              without DIR: the kernel installed last (kept in /var/lib/loa/kernel)
@@ -38,6 +40,9 @@ STOCK = "6.12.69-android16-6-g586bfab1b9c5-abogki536749445-4k"
 # "nitian" (against heaven) answers the device's codename, shuntian (with heaven).
 OURS = re.compile(r"^6\.12\.69-android16-6-nitian\d+-4k$")
 STATE = "/var/lib/loa/kernel"
+PIN = "/usr/share/loa/kernel/pin"
+REPO = "nervouna/omarchy-on-xiaomi-pad-9-pro"
+UPDATE_PENDING = "/var/lib/loa-update/pending"
 MODULES = "/usr/lib/modules"
 ARCHIVE = "system_dlkm_staging_archive.tar.gz"
 
@@ -199,6 +204,74 @@ def build_modules(new, archive):
     print(f"modules: {n} in {dst}")
 
 
+def pin():
+    """{"tag", "release", "sha256": {file: hash}} from the pin file, or None."""
+    p = {"sha256": {}}
+    try:
+        for line in open(PIN):
+            w = line.split()
+            if len(w) == 2 and w[0] in ("tag", "release"):
+                p[w[0]] = w[1]
+            elif len(w) == 3 and w[0] == "sha256":
+                p["sha256"][w[1]] = w[2]
+    except OSError:
+        return None
+    ok = "tag" in p and OURS.match(p.get("release", "")) and set(p["sha256"]) == {"boot-gz.img", ARCHIVE}
+    return p if ok else None
+
+
+def installed():
+    try:
+        return open(f"{STATE}/installed").read().split()[0]
+    except (OSError, IndexError):
+        return None
+
+
+def file_sha(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for block in iter(lambda: f.read(1 << 20), b""):
+            h.update(block)
+    return h.hexdigest()
+
+
+def cmd_update():
+    p = pin()
+    if p is None:
+        die(f"no usable kernel pin in {PIN}")
+    sfx = slot()
+    if installed() == p["release"] and release(read_part(boot_part(sfx))) == p["release"]:
+        print(f"boot{sfx} already holds {p['release']}"); return
+    if os.path.exists(UPDATE_PENDING):
+        die("an update is on trial or unconfirmed (loa-update check): confirm it or roll it back first")
+    d = f"{STATE}/download"
+    os.makedirs(d, exist_ok=True)
+    for name, want in p["sha256"].items():
+        f = f"{d}/{name}"
+        if not (os.path.exists(f) and file_sha(f) == want):
+            url = f"https://github.com/{REPO}/releases/download/{p['tag']}/{name}"
+            r = subprocess.run(["curl", "-fL", "-#", "-C", "-", "--retry", "3", "--connect-timeout", "20",
+                                "--speed-limit", "1024", "--speed-time", "60", "--max-time", "1800",
+                                "-o", f, url])
+            if r.returncode != 0:
+                die(f"download of {name} failed (curl {r.returncode}); run it again to resume")
+            if file_sha(f) != want:
+                os.remove(f)
+                die(f"{name} does not have the pinned sha256; removed, nothing was written")
+    got = release(open(f"{d}/boot-gz.img", "rb").read())
+    if got != p["release"]:
+        die(f"the download holds {got!r}, the pin says {p['release']}; nothing was written")
+    cmd_install(d)
+    shutil.rmtree(d, ignore_errors=True)
+
+
+def cmd_hint():
+    """One line for loa-update when the pinned kernel is not the installed one."""
+    p = pin()
+    if p and installed() != p["release"]:
+        print(f"kernel: {p['release']} is expected, {installed() or 'the stock kernel'} is installed: sudo loa-kernel update")
+
+
 def cmd_status():
     sfx = slot(); dev = boot_part(sfx)
     cur = read_part(dev)
@@ -207,6 +280,8 @@ def cmd_status():
     st = saved_stock(sfx, len(cur))
     print(f"stock image:  {stock_path(sfx) + ' (sha256 ' + sha(st)[:12] + ')' if st else 'not saved'}")
     print(f"slot:         {'marked successful' if slot_successful(sfx) else 'NOT marked successful'}")
+    p = pin()
+    print(f"expected:     {p['release'] if p else 'no pin'}")
     print(f"namespaces:   user {'yes' if os.path.exists('/proc/self/ns/user') else 'no'}, "
           f"pid {'yes' if os.path.exists('/proc/self/ns/pid') else 'no'}, "
           f"ipc {'yes' if os.path.exists('/proc/self/ns/ipc') else 'no'}")
@@ -251,6 +326,9 @@ def cmd_install(d):
         die("read-back of the new image differs; stock image " + ("restored" if ok else "NOT restored"))
     with open(f"{STATE}/installed", "w") as f:
         f.write(f"{new} {sha(stock)}\n")
+    for t in os.listdir(MODULES):            # trees of our earlier builds
+        if OURS.match(t) and t not in (new, os.uname().release):
+            shutil.rmtree(f"{MODULES}/{t}", ignore_errors=True)
     subprocess.run(["sync"])
     print(f"boot{sfx}: {new} written and read back. Restart to use it.")
     print(f"rollback: loa-kernel restore, or from Fastboot: fastboot flash boot{sfx} <copy of {stock_path(sfx)}>")
@@ -287,12 +365,16 @@ def main():
     a = sys.argv[1:]
     if a == ["status"]:
         return cmd_status()
+    if a == ["hint"]:
+        return cmd_hint()
     if os.geteuid() != 0:
         die("run as root")
     if a == ["backup"]:
         cmd_backup()
     elif a[:1] == ["install"] and len(a) <= 2:
         cmd_install(a[1] if len(a) == 2 else None)
+    elif a == ["update"]:
+        cmd_update()
     elif a == ["modules"]:
         cmd_modules()
     elif a == ["restore"]:

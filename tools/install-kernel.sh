@@ -2,7 +2,8 @@
 # Install this project's rebuilt kernel (user, PID and IPC namespaces) on the
 # tablet over USB, or put the stock kernel back. Run from the Mac; the tablet
 # runs Omarchy with the current overlay (it needs /usr/local/bin/loa-kernel).
-#   tools/install-kernel.sh             the newest kernel-* release
+#   tools/install-kernel.sh             the kernel this checkout pins
+#                                       (rootfs-overlay/usr/share/loa/kernel/pin)
 #   tools/install-kernel.sh TAG         that release
 #   tools/install-kernel.sh DIR         a local build: boot-gz.img and
 #                                       system_dlkm_staging_archive.tar.gz
@@ -19,16 +20,22 @@ if [ "$1" = --restore ]; then
     exit
 fi
 SRC=$1
+PIN="$D/rootfs-overlay/usr/share/loa/kernel/pin"
+PINNED=$(sed -n 's/^tag //p' "$PIN")
 if [ -z "$SRC" ]; then
-    SRC=$(gh release list --limit 100 --json tagName -q '[.[].tagName | select(startswith("kernel-"))][0]')
-    [ -n "$SRC" ] || { echo "no kernel-* release"; exit 1; }
+    SRC=$PINNED
+    [ -n "$SRC" ] || { echo "no tag in $PIN"; exit 1; }
 fi
 if [ ! -d "$SRC" ]; then
     DIR="$D/build/kernel/$SRC"
     mkdir -p "$DIR"
     gh release download "$SRC" --dir "$DIR" --clobber \
         -p boot-gz.img -p system_dlkm_staging_archive.tar.gz -p SHA256SUMS
-    (cd "$DIR" && grep -E '  (boot-gz\.img|system_dlkm_staging_archive\.tar\.gz)$' SHA256SUMS | shasum -a 256 -c -)
+    if [ "$SRC" = "$PINNED" ]; then   # the pin's hashes, as the tablet's own `loa-kernel update` checks
+        (cd "$DIR" && sed -n 's/^sha256 \([^ ]*\) \(.*\)/\2  \1/p' "$PIN" | shasum -a 256 -c -)
+    else
+        (cd "$DIR" && grep -E '  (boot-gz\.img|system_dlkm_staging_archive\.tar\.gz)$' SHA256SUMS | shasum -a 256 -c -)
+    fi
     SRC=$DIR
 fi
 [ -f "$SRC/boot-gz.img" ] && [ -f "$SRC/system_dlkm_staging_archive.tar.gz" ] || { echo "$SRC: no kernel build"; exit 1; }
