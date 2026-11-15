@@ -2,8 +2,8 @@
 # Keep /etc/pacman.conf on Omarchy's aarch64 channel plus this tablet's one
 # delta (IgnorePkg = aquamarine, our patched build). Idempotent; run by
 # tools/apply-overlay.sh, tools/personalize.sh (after its keyring reset) and the
-# user's pre-refresh-pacman Omarchy hook (after `omarchy-refresh-pacman` copied
-# its template over the file).
+# /usr/local/bin/omarchy-hook wrapper (for pre-refresh-pacman, after
+# `omarchy-refresh-pacman` copied its template over the file).
 #
 # Older Omarchy builds copied the x86_64 template here ([multilib], no [alarm],
 # stable-mirror.omarchy.org): such a file is replaced with the aarch64 one.
