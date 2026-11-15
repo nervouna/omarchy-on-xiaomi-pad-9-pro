@@ -1770,7 +1770,7 @@ nothing. Each fix uncovered the next cause:
   was not established. With the screen off it is worse (#72), so the runner charges
   with the screen on.
 - macOS hides the network interfaces' MAC addresses from Homebrew's Python 3.14 and
-  its child processes (`ifconfig` shows `02:00:00:00:00:00` for every interface), so
+  its child processes (`ifconfig` shows the same placeholder address, 02 followed by zeros, for every interface), so
   `tools/tssh` found no tablet when run from it; `/usr/bin/python3` and the shell are
   not affected. The runner's shebang is `/usr/bin/python3`.
 - Pi Agent: npm package `@earendil-works/pi-coding-agent` 1.5.2 (needs Node >= 22.19;
