@@ -143,10 +143,13 @@ class Heartbeat(threading.Thread):
     def __init__(self):
         super().__init__(daemon=True)
         self.stop = threading.Event()
+        self.quiet = threading.Event()  # set during a block: no SSH logins while measuring
         self.last = {}
 
     def run(self):
         while not self.stop.wait(10):
+            if self.quiet.is_set():
+                continue
             try:
                 self.last = ctl("hb", timeout=20, check=False)
             except Exception as exc:  # keep beating; the watchdog decides
@@ -184,6 +187,21 @@ def block_power(path, discard, seconds):
             "battery_c": [round(min(temps), 1), round(max(temps), 1)] if temps else None,
             "cpu_max_c": round(max(cpu), 1) if cpu else None,
             "slept_s": round(sum(r.get("asleep_s", 0) for r in use), 1)}
+
+
+def link_records(path):
+    """How many powerlog records saw traffic on usb0 (0 in a record: the link was down)."""
+    n = up = 0
+    for line in open(path):
+        try:
+            r = json.loads(line)
+        except ValueError:
+            continue
+        if r.get("header"):
+            continue
+        n += 1
+        up += bool(r.get("d", {}).get("net", {}).get("usb0"))
+    return [up, n]
 
 
 def block_valid(b):
@@ -282,6 +300,8 @@ def report(outdir):
         else:
             work = "-"
         note = b.get("skipped") or b.get("invalid") or ""
+        if b.get("usb_link_records"):
+            note = (note + " " if note else "") + "USB link up in %d/%d records" % tuple(b["usb_link_records"])
         lines.append(f"| {i} | {b['workload']} | {time.strftime('%H:%M', time.localtime(b.get('t', 0)))} | "
                      f"{st.get('capacity', '-')}>{en.get('capacity', '-')} % | "
                      f"{p['mean_w']:.2f} | {p['sd_within_w']:.2f} | {p['battery_c']} | {p['cpu_max_c']} | "
@@ -334,7 +354,10 @@ def wait_charge(a, hb, state):
                 ctl("display off")
             else:
                 ctl(f"backlight {a.charge_backlight}")
+            t_end = time.time() + 3 * 3600
             while (hb.last.get("capacity") or cap) < target:
+                if time.time() > t_end:
+                    raise RuntimeError("charging took longer than 3 h")
                 time.sleep(30)
                 if not hb.last.get("active", True):
                     raise RuntimeError("the tablet ended the run (watchdog): " + str(hb.last.get("last_restore")))
@@ -351,6 +374,16 @@ def run_block(a, wl, tag, outdir, hb, state):
     # The tablet ends the block and resumes the input by itself (the block's own stop
     # unit, and the suspend deadline as a backstop), so a USB link drop on the Mac's
     # side changes nothing in the block; the runner collects the result afterwards.
+    if wl == "agent":
+        # Warm the endpoint before every agent block: after a recharge it has been idle
+        # long enough that its first answer would take about 17 s.
+        w = ctl("warmup", timeout=200, check=False)
+        b["warmup"] = w
+        if w.get("http") != "200":
+            ctl("services stop")
+            b["invalid"] = f"endpoint warm-up failed (HTTP {w.get('http')})"
+            return b
+    hb.quiet.set()
     ctl(f"input suspend --max-seconds {a.seconds + 120}")
     b["t"] = time.time()
     ctl(f"block start {wl} --seconds {a.seconds} --tag {tag} --interval {a.interval} --sample {a.sample} "
@@ -371,6 +404,7 @@ def run_block(a, wl, tag, outdir, hb, state):
         if time.time() > t_end:
             raise RuntimeError("no block result 25 minutes after the block's end")
         time.sleep(10)
+    hb.quiet.clear()
     r = ctl("input resume")
     b["resumed"] = {k: r.get(k) for k in ("suspend_status", "usb_ua")}
     ctl("services stop")
@@ -379,6 +413,7 @@ def run_block(a, wl, tag, outdir, hb, state):
     open(path, "w").write(o)
     b["power"] = block_power(path, a.discard, a.seconds)
     b["invalid"] = block_valid(b)
+    b["usb_link_records"] = link_records(path)
     return b
 
 
@@ -402,10 +437,10 @@ def recover(a, run_id, total, state):
 
 
 def cmd_run(a):
-    if sys.platform == "darwin" and not os.environ.get("POWERTEST_AWAKE"):
-        # A sleeping Mac stops the heartbeats; caffeinate keeps it awake for the run.
-        os.execvpe("caffeinate", ["caffeinate", "-i", sys.executable, *sys.argv],
-                   dict(os.environ, POWERTEST_AWAKE="1"))
+    if sys.platform == "darwin":
+        # A sleeping Mac stops the heartbeats; caffeinate keeps it awake while this
+        # process lives (a child, so the runner's PID stays this one).
+        subprocess.Popen(["caffeinate", "-i", "-w", str(os.getpid())])
     a.lo, a.hi = (int(x) for x in a.window.split("-"))
     a.workloads = a.workloads.split(",")
     run_id = time.strftime("%Y%m%d-%H%M%S")
@@ -469,6 +504,7 @@ def cmd_run(a):
                         log(f"{tag}: start at {cap} %")
                         b = run_block(a, wl, tag, outdir, hb, state)
                     except RuntimeError as exc:
+                        hb.quiet.clear()
                         log(f"{tag}: interrupted: {exc}")
                         meta["blocks"].append({"workload": wl, "tag": tag, "t": time.time(),
                                                "invalid": f"interrupted: {exc}"})

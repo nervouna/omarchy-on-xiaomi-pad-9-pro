@@ -416,6 +416,9 @@ def cmd_hold(a):
             if os.path.exists(LOCK):
                 os.utime(HB) if os.path.exists(HB) else write(HB, "")
             continue
+        # A session lost with the USB link is replaced by a new one within seconds of
+        # the link's return; give a successor 20 s before calling the runner gone.
+        time.sleep(20)
         if rd(HOLDER) == a.id and os.path.exists(LOCK):
             restore("runner gone: its session closed")
             stop_units("watchdog")
