@@ -79,7 +79,10 @@ tools/make-image.sh --clean --reset-hypr --apply   # ~15 min; -> images/omarchy-
 
 1. Unlock the bootloader (Xiaomi's procedure).
 2. Flash the official fastboot ROM **OS4.0.5.0.XFPCNXM** (`flash_all`). Boot
-   Android once to be sure it works; its data doesn't matter.
+   Android once, up to its first screen: that marks the slot successful. On a slot
+   that is not marked, the bootloader takes one retry off per boot and stops in
+   Fastboot after 7 ([#74](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/74));
+   `tools/install.sh` refuses such a slot. Android's data doesn't matter.
 3. Note the active slot: `fastboot getvar current-slot` (`flash_all` sets **a**).
    Stage 1 and the island derive the slot at runtime; both slots work.
 
@@ -197,6 +200,7 @@ activation. Leave Android at least 16–20 GiB: its OTAs stage into userdata.
 | Situation | Way out |
 |---|---|
 | Boot loops / no desktop | After 3 boots that never reach `loa-boot-ok`, stage 1 goes to Fastboot by itself |
+| Stops in Fastboot after a plain reboot, and `fastboot reboot` comes straight back | The slot ran out of retries (`fastboot getvar slot-retry-count:<slot>` is 0). `fastboot set_active <slot>`, `fastboot reboot`, then `reboot-to-android` once so Android marks the slot successful. `journalctl -b -u loa-boot-ok` shows the boots left while a slot is unmarked |
 | Want Android | Hold **Volume Up** right after the logo, or `reboot-to-android` in Omarchy |
 | Back to stock for good | `fastboot flash init_boot_<slot> images/init_boot-stock-OS4.0.5.0.img` |
 | New root broken after repartition | `fastboot flash init_boot_<slot>` an image whose stage 1 only knows `ramdump`, or remove the `omarchy` partition |

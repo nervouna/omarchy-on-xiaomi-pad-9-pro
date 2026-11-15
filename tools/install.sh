@@ -23,6 +23,16 @@ echo "product=$PRODUCT unlocked=$UNLOCKED current-slot=$SLOT"
 [ "$PRODUCT" = shuntian ] || { echo "not a shuntian in Fastboot"; exit 1; }
 [ "$UNLOCKED" = yes ] || { echo "bootloader is locked"; exit 1; }
 case $SLOT in a|b) ;; *) echo "unknown slot '$SLOT'"; exit 1;; esac
+# A slot Android never finished booting on is not marked successful: the bootloader then
+# takes one retry off per boot and stops in Fastboot after 7 (issue #74).
+SUCCESSFUL=$(gv "slot-successful:$SLOT")
+if [ "$SUCCESSFUL" != yes ] && [ -z "$LOA_SKIP_SLOT_CHECK" ]; then
+    echo "slot $SLOT is not marked successful (slot-successful:$SLOT = '$SUCCESSFUL')."
+    echo "Boot stock Android once on this slot (fastboot reboot, wait for its first screen),"
+    echo "come back to Fastboot (Power + Volume Down) and run this again."
+    echo "LOA_SKIP_SLOT_CHECK=1 installs anyway."
+    exit 1
+fi
 
 [ -f "$IMG.sha256" ] && { echo "checking image digest"; (cd "$(dirname "$IMG")" && shasum -a 256 -c "$(basename "$IMG").sha256"); }
 RAW=${IMG%.zst}
