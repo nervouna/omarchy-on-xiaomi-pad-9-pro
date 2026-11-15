@@ -56,10 +56,13 @@ chroot，也不是 PRoot：平板在原厂 Android GKI 内核上直接运行 sys
 
 ## 限制
 
-本项目运行在原厂内核和固件上，因此有一些硬性限制：
+本项目运行在原厂固件和内核模块上，因此有一些硬性限制：
 
-- **没有 user namespace。** 依赖它的东西（Flatpak/bubblewrap、rootless 容器、systemd 的
-  `PrivateUsers=`）都不能用；overlay 为受影响的服务关闭了 `PrivateUsers=`。Chromium 的 setuid 沙箱可以用。
+- **原厂内核没有 user namespace。** 依赖它的东西（Flatpak/bubblewrap、rootless 容器、编程代理的沙箱、
+  systemd 的 `PrivateUsers=`）在原厂内核上都不能用；overlay 为受影响的服务关闭了 `PrivateUsers=`，
+  Chromium 的 setuid 沙箱可以用。`tools/install-kernel.sh` 可以把内核换成本仓库用同一份公开源码编译、
+  带 user/PID/IPC namespace 的版本，原厂内核一条命令即可恢复：见
+  [Kernel](docs/maintenance.md#kernel-loa-kernel)。换内核后仍然没有 `pids` cgroup 控制器和 nftables。
 - **没有深度睡眠。** 深度休眠在唤醒时出错（PMIC 报错），所以只用 s2idle，仅在电池供电时休眠，
   休眠期间关闭 Wi-Fi 和蓝牙。开盖不会唤醒：请按键盘或电源键。
 - **没有内存压力信息**（Bootloader 命令行带 `cgroup_disable=pressure`）：无法使用

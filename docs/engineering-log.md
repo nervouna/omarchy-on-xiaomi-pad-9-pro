@@ -1655,3 +1655,56 @@ nothing. Each fix uncovered the next cause:
   a disk swap file.
 - Not checked: nothing run on a tablet yet (zram size after a reboot, the node value,
   the unit state, a 4K 60 Hz picture after a hot-plug).
+
+### 2026-11-15: a rebuilt kernel with namespaces becomes installable (#57)
+
+- The owner's call: stop insisting on the stock kernel. Codex's sandbox runs `bwrap`,
+  which fails without user namespaces, and no userspace trick replaces them.
+- `.github/workflows/kernel.yml` builds the public `android16-6.12-2026-03` tree (pinned
+  manifest) twice, stock configuration and `kernel/loa.fragment`, and fails when a CRC
+  of the first changes in the second. Release string `6.12.69-android16-6-loa1-4k`:
+  Kleaf writes `-maybe-dirty` without `--config=stamp`, `kernel/prepare.sh` replaces
+  that literal in `build/kernel/kleaf/impl/stamp.bzl`.
+- Options tried one by one on top of the namespaces (spike branch, run 43696987058):
+  `FHANDLE` and `NETFILTER_XT_MATCH_ADDRTYPE` change no CRC and are in the fragment;
+  `CGROUP_PIDS` changes 4224 CRCs; the builds with `NF_TABLES` and with
+  `MODULE_SIG_PROTECT` off failed and were not looked into. The second would have let
+  the stock-signed GKI modules load, so that no modules need to ship with the kernel.
+- `loa-kernel` (on the tablet) and `tools/install-kernel.sh` (on the Mac) install it:
+  see "Kernel" in maintenance.md. The image `loa-kernel` composes from the #57 build is
+  byte-identical to the one `make-boot.py` made for the #57 boot test.
+- `import-vendor.sh` took the module directory name from `uname -r`; it now takes it
+  from `system_dlkm`, and rebuilds the rebuilt kernel's tree afterwards.
+- On the 8 GB tablet (slot b), installed with `tools/install-kernel.sh`, cold boot from
+  flash: 648 modules and `loa-modules: loaded=342 failed=7`, the same as on the stock
+  kernel minutes earlier; no failed units, taint 4608 as before, no version, symbol or
+  signature complaints in `dmesg`; Wi-Fi connected, Bluetooth powered, KGSL and DRM
+  nodes, Hyprland, binderfs, charging. As the desktop user: `unshare -U -r`,
+  `unshare -U -r -p -f --mount-proc`, `unshare -U -r -i`, `bwrap --unshare-all`,
+  `codex sandbox -- id` (it failed on the stock kernel with "kernel does not support
+  user namespaces"; writes outside the sandbox policy are refused), headless Chromium
+  with `--disable-setuid-sandbox`; as root `systemd-run -p PrivateUsers=yes`.
+- Android round trip on the same tablet: `reboot-to-android` restored the stock image,
+  Android booted on the stock kernel (`sys.boot_completed=1`), `adb reboot` came back
+  to Omarchy on the stock kernel (same module counts: this is also the rollback path),
+  `loa-kernel-reinstall.service` wrote the rebuilt kernel back, and the next restart
+  ran it.
+- The stock `boot_b` dump that #57 says is in `~/LoA-backups/` was not on the Mac; a new
+  one (sha256 `679a1158...`) is in `backups/`, where `install-kernel.sh` now puts it.
+- Not checked: touch, pen, sound, the keyboard cover, suspend and resume, double tap,
+  battery life and heat without Xiaomi's 12 kernel-side options (#57 lists them);
+  Android started with Volume Up on the rebuilt kernel; a from-scratch root image
+  booted first on the rebuilt kernel; Flatpak, Podman and
+  Docker (not installed); the two new options at run time. The power baselines of
+  #71 and #73 were measured on the stock kernel.
+- Later the same day, at the owner's request, the 12 GB tablet (slot b): its stock
+  `boot_b` is byte-identical to the 8 GB tablet's (sha256 `679a1158...`). Installed the
+  same build; cold boot: 648 modules, `loaded=342 failed=7` (343 on the stock kernel just
+  before; the 8 GB tablet showed both numbers on the stock kernel in #57), no failed
+  units, no module messages, Wi-Fi, Bluetooth, charging, `unshare -U -r`,
+  `bwrap --unshare-all`, `codex sandbox`, `PrivateUsers=yes`. The Android round trip was
+  not repeated there.
+- Renamed before the first release, at the owner's wish: the builds are `nitian1`,
+  `nitian2`, ... ("against heaven"; the codename `shuntian` reads "with heaven"). The
+  `loa1` build above was a pull request artifact and was never published; both tablets
+  get `nitian1` from the release.

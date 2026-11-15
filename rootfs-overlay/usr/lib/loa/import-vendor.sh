@@ -14,7 +14,6 @@ set -e
 T=${LOA_IMPORT_ROOT:-}
 STAMP=$T/usr/lib/loa/vendor-imported
 K=$(uname -r)
-M=$T/usr/lib/modules/$K
 W=/run/loa-import
 log() { echo "import-vendor: $*"; }
 
@@ -53,17 +52,26 @@ for p in system vendor odm system_dlkm vendor_dlkm; do
 done
 mkdir -p $W/modem; mount -o ro "$(part modem$SLOT)" $W/modem
 
-# Modules. Stage 1 put the ramdisk set in $M/ramdisk (first boot).
+# Modules, under the stock kernel's release (the name of system_dlkm's one module
+# directory), which is not `uname -r` on the rebuilt kernel. Stage 1 put the ramdisk
+# set in /usr/lib/modules/<running release>/ramdisk (first boot).
+SK=$(ls $W/system_dlkm/lib/modules | head -1)
+[ -n "$SK" ] || { log "no module directory in system_dlkm"; exit 1; }
+M=$T/usr/lib/modules/$SK
 mkdir -p $M/vendor $T/usr/lib/loa/modules
-cp -a $W/system_dlkm/lib/modules/$K/. $M/
+cp -a $W/system_dlkm/lib/modules/$SK/. $M/
 cp -a $W/vendor_dlkm/lib/modules/. $M/vendor/
-cp $W/system_dlkm/lib/modules/$K/modules.load $T/usr/lib/loa/modules/system_dlkm.load
+cp $W/system_dlkm/lib/modules/$SK/modules.load $T/usr/lib/loa/modules/system_dlkm.load
 cp $W/vendor_dlkm/lib/modules/modules.load $T/usr/lib/loa/modules/vendor_dlkm.load
 cp $W/vendor_dlkm/lib/modules/*blocklist $T/usr/lib/loa/modules/
 rm -f $M/modules.dep $M/modules.dep.bin $M/modules.alias* $M/modules.symbols* $M/modules.softdep $M/modules.devname
 [ -z "$T" ] || [ -e $T/lib ] || ln -s usr/lib $T/lib   # depmod -b looks in lib/modules
-depmod -b "${T:-/}" -a "$K"
+depmod -b "${T:-/}" -a "$SK"
 log "modules: $(find $M -name '*.ko' | wc -l)"
+# The rebuilt kernel has its own tree: these modules plus its own GKI modules.
+if [ "$K" != "$SK" ] && [ -z "$T" ]; then
+    /usr/local/bin/loa-kernel modules || log "no module tree for $K: run tools/install-kernel.sh again"
+fi
 
 # Firmware (firmware_class.path is /usr/lib/firmware/image, set by stage 1).
 mkdir -p $T/usr/lib/firmware/image

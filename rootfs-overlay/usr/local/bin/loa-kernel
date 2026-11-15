@@ -1,0 +1,304 @@
+#!/usr/bin/env python3
+"""Install this project's rebuilt GKI kernel on the active slot, or put the
+stock kernel back.
+
+  loa-kernel status
+  loa-kernel backup          save the stock boot image of the active slot, print its path
+  loa-kernel install [DIR]   DIR holds boot-gz.img and system_dlkm_staging_archive.tar.gz;
+                             without DIR: the kernel installed last (kept in /var/lib/loa/kernel)
+  loa-kernel modules         rebuild the module tree of the installed kernel
+  loa-kernel restore         write the saved stock boot image back
+
+The rebuilt kernel is the public Android common kernel the stock one was built
+from, with user, PID and IPC namespaces enabled. It exports the same symbol
+CRCs, so the stock Xiaomi and Qualcomm modules load unchanged. The GKI modules
+(bluetooth, rfkill, binder, ...) are signed per build and come with the kernel.
+
+`boot` is an AVB chain partition. The unlocked bootloader accepts a digest
+mismatch but refuses a boot partition whose vbmeta is unsigned or whose footer
+is not at the end, and then stops in Fastboot. So the stock vbmeta and footer
+stay where they are and only the image in front of them is replaced; that is
+why the boot image is put together here, from this tablet's own stock image.
+
+Module trees: /usr/lib/modules/<stock release> stays as imported;
+/usr/lib/modules/<new release> gets hard links to its ramdisk/ and vendor/
+modules plus the rebuilt GKI modules. Writing the stock image back is a full
+rollback. If the new kernel does not come up, flash the stock image from
+Fastboot: `fastboot flash boot_<slot> <the image "backup" saved>`.
+
+Android keeps the stock kernel: its own GKI modules are signed for it and the
+rebuilt kernel does not trust them. loa-reboot-android.service restores the
+stock image first and leaves /var/lib/loa/kernel/reinstall; on the next Omarchy
+boot loa-kernel-reinstall.service writes the rebuilt kernel back, and the
+restart after that runs it.
+"""
+import gzip, hashlib, os, re, shutil, struct, subprocess, sys, tarfile
+
+STOCK = "6.12.69-android16-6-g586bfab1b9c5-abogki536749445-4k"
+# "nitian" (against heaven) answers the device's codename, shuntian (with heaven).
+OURS = re.compile(r"^6\.12\.69-android16-6-nitian\d+-4k$")
+STATE = "/var/lib/loa/kernel"
+MODULES = "/usr/lib/modules"
+ARCHIVE = "system_dlkm_staging_archive.tar.gz"
+
+
+def die(msg):
+    sys.exit("loa-kernel: " + msg)
+
+
+def slot():
+    try:
+        m = re.search(r'^androidboot\.slot_suffix = "(_[ab])"$', open("/proc/bootconfig").read(), re.M)
+    except OSError:
+        m = None
+    m = m or re.search(r"androidboot\.slot_suffix=(_[ab])\b", open("/proc/cmdline").read())
+    if not m:
+        die("no slot suffix in bootconfig or cmdline")
+    return m.group(1)
+
+
+def boot_part(sfx):
+    for d in os.listdir("/sys/class/block"):
+        try:
+            u = open(f"/sys/class/block/{d}/uevent").read()
+        except OSError:
+            continue
+        if f"PARTNAME=boot{sfx}\n" in u:
+            return "/dev/" + d
+    die(f"no partition named boot{sfx}")
+
+
+def slot_successful(sfx):
+    out = subprocess.run(["lsblk", "-rno", "PARTLABEL,PARTFLAGS"], capture_output=True, text=True).stdout
+    m = re.search(rf"^boot{sfx} (0x[0-9a-f]+)$", out, re.M)
+    return bool(m) and bool((int(m.group(1), 16) >> 48) & 0x40)
+
+
+def sha(b):
+    return hashlib.sha256(b).hexdigest()
+
+
+def release(img):
+    """Kernel release of a v4 boot image (kernel plain or gzip), or None."""
+    if img[:8] != b"ANDROID!":
+        return None
+    size, = struct.unpack_from("<I", img, 8)
+    k = bytes(img[4096:4096 + size])
+    if k[:2] == b"\x1f\x8b":
+        try:
+            k = gzip.decompress(k)
+        except (OSError, EOFError):
+            return None
+    m = re.search(rb"Linux version (\S+) ", k)
+    return m.group(1).decode() if m else None
+
+
+def footer(img):
+    """(image size, vbmeta offset) from the AVB footer in the last 64 bytes."""
+    f = img[-64:]
+    if f[:4] != b"AVBf":
+        die("no AVB footer at the end of the image")
+    return struct.unpack_from(">Q", f, 12)[0], struct.unpack_from(">Q", f, 20)[0]
+
+
+def read_part(dev):
+    with open(dev, "rb") as f:
+        return f.read()
+
+
+def write_part(dev, img):
+    fd = os.open(dev, os.O_RDWR)
+    try:
+        if os.lseek(fd, 0, os.SEEK_END) != len(img):
+            die(f"{dev} is not {len(img)} bytes")
+        os.lseek(fd, 0, os.SEEK_SET)
+        done = 0
+        while done < len(img):
+            done += os.write(fd, img[done:done + (4 << 20)])
+        os.fsync(fd)
+        os.posix_fadvise(fd, 0, 0, os.POSIX_FADV_DONTNEED)   # read back from flash
+    finally:
+        os.close(fd)
+    return sha(read_part(dev)) == sha(img)
+
+
+def stock_path(sfx):
+    return f"{STATE}/boot{sfx}-stock.img"
+
+
+def saved_stock(sfx, size):
+    try:
+        img = open(stock_path(sfx), "rb").read()
+    except OSError:
+        return None
+    return img if len(img) == size and release(img) == STOCK else None
+
+
+def backup(sfx, cur):
+    """The stock image of this slot: the partition if it still holds it, else the saved copy."""
+    p = stock_path(sfx)
+    if release(cur) == STOCK:
+        footer(cur)
+        old = saved_stock(sfx, len(cur))
+        if old is None or sha(old) != sha(cur):
+            os.makedirs(STATE, exist_ok=True)
+            with open(p + ".new", "wb") as f:
+                f.write(cur); f.flush(); os.fsync(f.fileno())
+            os.replace(p + ".new", p)
+        return cur
+    img = saved_stock(sfx, len(cur))
+    if img is None:
+        die(f"boot{sfx} holds {release(cur) or 'an unknown image'}, not the stock kernel {STOCK}, "
+            f"and there is no saved stock image at {p}")
+    return img
+
+
+def extract_gki(archive, new, into):
+    prefix = f"lib/modules/{new}/"
+    with tarfile.open(archive) as t:
+        names = [m for m in t.getmembers() if m.name.lstrip("./").startswith(prefix)]
+        if not any(m.name.endswith(".ko") for m in names):
+            die(f"{archive} has no modules for {new}")
+        for m in names:
+            rel = m.name.lstrip("./")[len(prefix):]
+            if not rel or ".." in rel.split("/") or not (m.isdir() or m.isfile()):
+                continue
+            out = f"{into}/{rel}"
+            if m.isdir():
+                os.makedirs(out, exist_ok=True)
+            else:
+                os.makedirs(os.path.dirname(out), exist_ok=True)
+                with open(out, "wb") as f:
+                    shutil.copyfileobj(t.extractfile(m), f)
+
+
+def build_modules(new, archive):
+    """/usr/lib/modules/<new>: stock ramdisk/ and vendor/ (hard links) + rebuilt GKI modules."""
+    src, dst, tmp = f"{MODULES}/{STOCK}", f"{MODULES}/{new}", f"{MODULES}/.{new}.new"
+    shutil.rmtree(tmp, ignore_errors=True)
+    os.makedirs(tmp)
+    for d in ("ramdisk", "vendor"):
+        s = next((t for t in (f"{src}/{d}", f"{dst}/{d}") if os.path.isdir(t)), None)
+        if s is None:
+            die(f"no {d} modules in {src}: boot the stock kernel once so they are imported")
+        subprocess.run(["cp", "-al", s, f"{tmp}/{d}"], check=True)
+    if os.path.exists(archive):
+        extract_gki(archive, new, tmp)
+    else:
+        # A root image flashed while `boot` held this kernel: boot without the GKI
+        # modules (Bluetooth among them) rather than without any.
+        print(f"loa-kernel: {archive} is missing: {new} gets no GKI modules until "
+              "tools/install-kernel.sh is run again", file=sys.stderr)
+    if os.path.lexists(dst):
+        shutil.rmtree(dst + ".old", ignore_errors=True)
+        os.rename(dst, dst + ".old")
+    os.rename(tmp, dst)
+    shutil.rmtree(dst + ".old", ignore_errors=True)
+    subprocess.run(["depmod", "-a", new], check=True)
+    n = sum(f.endswith(".ko") for _, _, fs in os.walk(dst) for f in fs)
+    print(f"modules: {n} in {dst}")
+
+
+def cmd_status():
+    sfx = slot(); dev = boot_part(sfx)
+    cur = read_part(dev)
+    print(f"running:      {os.uname().release}")
+    print(f"boot{sfx}:       {release(cur) or 'unknown image'} ({dev}, sha256 {sha(cur)[:12]})")
+    st = saved_stock(sfx, len(cur))
+    print(f"stock image:  {stock_path(sfx) + ' (sha256 ' + sha(st)[:12] + ')' if st else 'not saved'}")
+    print(f"slot:         {'marked successful' if slot_successful(sfx) else 'NOT marked successful'}")
+    print(f"namespaces:   user {'yes' if os.path.exists('/proc/self/ns/user') else 'no'}, "
+          f"pid {'yes' if os.path.exists('/proc/self/ns/pid') else 'no'}, "
+          f"ipc {'yes' if os.path.exists('/proc/self/ns/ipc') else 'no'}")
+
+
+def cmd_backup():
+    sfx = slot()
+    img = backup(sfx, read_part(boot_part(sfx)))
+    print(stock_path(sfx), sha(img))
+
+
+def cmd_install(d):
+    d = d or STATE
+    sfx = slot(); dev = boot_part(sfx)
+    if not slot_successful(sfx):
+        die(f"slot {sfx} is not marked successful; see slot-check (reboot-to-android once) first")
+    try:
+        gz = open(f"{d}/boot-gz.img", "rb").read()
+    except OSError:
+        die(f"no kernel build in {d}")
+    new = release(gz)
+    if not new or not OURS.match(new):
+        die(f"{d}/boot-gz.img holds {new!r}, not a kernel of this project")
+    orig = backup(sfx, read_part(dev))
+    stock = bytearray(orig)
+    _, vbmeta = footer(stock)
+    size, _ = footer(gz)
+    if size > vbmeta:
+        die("the kernel does not fit in front of the stock vbmeta")
+    if d != STATE:                       # keep the build: `modules`, and `install` after Android
+        shutil.copyfile(f"{d}/{ARCHIVE}", f"{STATE}/{ARCHIVE}.new")
+        build_modules(new, f"{STATE}/{ARCHIVE}.new")
+        os.replace(f"{STATE}/{ARCHIVE}.new", f"{STATE}/{ARCHIVE}")
+        with open(f"{STATE}/boot-gz.img.new", "wb") as f:
+            f.write(gz); f.flush(); os.fsync(f.fileno())
+        os.replace(f"{STATE}/boot-gz.img.new", f"{STATE}/boot-gz.img")
+    elif not os.path.isdir(f"{MODULES}/{new}/kernel"):
+        build_modules(new, f"{STATE}/{ARCHIVE}")
+    stock[:vbmeta] = gz[:size] + bytes(vbmeta - size)
+    if not write_part(dev, stock):
+        ok = write_part(dev, orig)
+        die("read-back of the new image differs; stock image " + ("restored" if ok else "NOT restored"))
+    with open(f"{STATE}/installed", "w") as f:
+        f.write(f"{new} {sha(stock)}\n")
+    subprocess.run(["sync"])
+    print(f"boot{sfx}: {new} written and read back. Restart to use it.")
+    print(f"rollback: loa-kernel restore, or from Fastboot: fastboot flash boot{sfx} <copy of {stock_path(sfx)}>")
+
+
+def cmd_modules():
+    new = os.uname().release
+    try:
+        new = open(f"{STATE}/installed").read().split()[0]
+    except OSError:
+        pass
+    if not OURS.match(new):
+        die("no kernel of this project is installed")
+    build_modules(new, f"{STATE}/{ARCHIVE}")
+
+
+def cmd_restore():
+    sfx = slot(); dev = boot_part(sfx)
+    cur = read_part(dev)
+    if release(cur) == STOCK:
+        print(f"boot{sfx} already holds the stock kernel"); return
+    img = backup(sfx, cur)
+    if not write_part(dev, img):
+        die("read-back of the stock image differs")
+    try:
+        os.remove(f"{STATE}/installed")
+    except OSError:
+        pass
+    subprocess.run(["sync"])
+    print(f"boot{sfx}: stock kernel written and read back. Restart to use it.")
+
+
+def main():
+    a = sys.argv[1:]
+    if a == ["status"]:
+        return cmd_status()
+    if os.geteuid() != 0:
+        die("run as root")
+    if a == ["backup"]:
+        cmd_backup()
+    elif a[:1] == ["install"] and len(a) <= 2:
+        cmd_install(a[1] if len(a) == 2 else None)
+    elif a == ["modules"]:
+        cmd_modules()
+    elif a == ["restore"]:
+        cmd_restore()
+    else:
+        sys.exit(__doc__)
+
+
+main()

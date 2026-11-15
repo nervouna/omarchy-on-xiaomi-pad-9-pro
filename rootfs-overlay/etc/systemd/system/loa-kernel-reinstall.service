@@ -1,0 +1,14 @@
+[Unit]
+Description=LoA write the rebuilt kernel back after a visit to Android
+# loa-reboot-android.service restored the stock kernel for Android and left the
+# flag. The restart after this one runs the rebuilt kernel again.
+ConditionPathExists=/var/lib/loa/kernel/reinstall
+After=loa-modules.service
+
+[Service]
+Type=oneshot
+ExecStartPre=/usr/bin/rm -f /var/lib/loa/kernel/reinstall
+ExecStart=/usr/local/bin/loa-kernel install
+
+[Install]
+WantedBy=multi-user.target

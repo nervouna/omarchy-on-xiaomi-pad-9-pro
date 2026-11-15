@@ -20,4 +20,4 @@ You will get an answer within a week. Fixes land on `main`; there are no maintai
 - Anything that needs physical access to the tablet: its bootloader is unlocked by design, which already gives full control to whoever holds it
 - Anything that needs access to the owner's Mac or build machine
 - Weaknesses in the stock Android kernel, Xiaomi or Qualcomm firmware and vendor daemons, Omarchy, Hyprland or Arch Linux ARM packages; report those upstream
-- The limits listed in the README, such as the missing user namespaces
+- The limits listed in the README, such as the missing user namespaces on the stock kernel
