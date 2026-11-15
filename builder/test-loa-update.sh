@@ -26,6 +26,17 @@ bundle() {  # VERSION DIR KEY [--aquamarine PKG]
     sh $W/repo/tools/make-update-bundle.sh --version "$v" --out "$d" --key "$k" "$@" > $W/out 2>&1 || fail "make-update-bundle $v"
 }
 same() { cmp -s "$1" "$2"; }
+# Every file, link and directory under /home, by content and target.
+homesum() {
+    { find /home | sort
+      find /home -type f -exec sha256sum {} +
+      find /home -type l -exec sh -c 'for l; do echo "$l -> $(readlink "$l")"; done' x {} +
+    } 2>&1 | sort | sha256sum
+}
+HD=/home/omarchy/.config/hypr/hypridle.conf                       # a user default the tests edit
+HM=/home/omarchy/.config/mimeapps.list                            # one they delete
+HL=/home/omarchy/.config/pipewire/pipewire.conf.d/50-loa-speakers.conf   # a legacy file they plant
+HB=/home/omarchy/.config/omarchy/branding/screensaver.txt         # a branding default they delete
 marker() { cat $S/pending 2>/dev/null; }
 aqver() { pacman -Q aquamarine | cut -d' ' -f2; }
 commit() { git -c user.name=test -c user.email=test@invalid commit -q "$@"; }
@@ -90,9 +101,17 @@ pass "the boot check runs before the early units, and the rollback, deadline and
 # file and adds the other.
 rm -f $S/version
 echo "-- changed by the test" >> $F; cp -a $F $W/F.before; rm -f $N
+# The home directory, edited and with defaults missing: an update changes none of it.
+echo "# edited by the test" >> $HD; cp -a $HD $W/HD.edited; cp -a $HM $W/HM.default
+rm -f $HM $HB; mkdir -p "$(dirname $HL)"; echo legacy > $HL; chown -R 1000:1000 /home/omarchy/.config
+home_before=$(homesum)
 bundle 29990101-1 $W/b1 $W/k1
 swap_key
 lu --file $W/b1/loa-update.tar || fail "a good bundle applies"
+[ "$(homesum)" = "$home_before" ] || fail "an update leaves every file under /home byte-identical"
+grep -qx "differs from the default: $HD" $W/out && grep -qx "differs from the default: $HM" $W/out &&
+    grep -q "legacy $HL is still there" $W/out || fail "an update lists the user defaults that differ and the legacy files"
+pass "an update leaves every file under /home byte-identical and lists what differs"
 [ "$(cat $S/version)" = 29990101-1 ] || fail "a good bundle records its version"
 pass "a root without a recorded version takes any bundle"
 pass "a good bundle applies and records its version"
@@ -108,6 +127,17 @@ desktop_up
 [ "$(cat /loa/boot-attempts)" = 0 ] && [ -e /run/loa-boot-ok ] && [ ! -e $S/pending ] ||
     fail "loa-boot-ok without a marker resets the counter, sets the flag and creates no marker"
 pass "loa-boot-ok without a marker resets the counter, sets the flag and creates no marker"
+
+# 1b. A first install (what the image build runs) seeds what is missing and
+# still never overwrites an edited file.
+tar -cf /run/loa-overlay.tar -C $W/repo rootfs-overlay user-defaults
+LOA_FIRST_INSTALL=1 LOA_OVERLAY_BACKUP=$W/bk-first sh $W/repo/tools/overlay-install.sh apply '' > $W/out 2>&1 ||
+    fail "a first install runs"
+same $HM $W/HM.default && same $HD $W/HD.edited && [ -e $HL ] ||
+    fail "a first install seeds a missing user default and leaves an edited one and a legacy file alone"
+[ ! -f /usr/share/omarchy/logo.txt ] || [ -e $HB ] || fail "a first install seeds the missing branding default"
+grep -qx "seed $HM" $W/out && ! grep -q 'differs from the default' $W/out || fail "a first install reports what it seeded"
+pass "a first install seeds what is missing and leaves an edited user default alone"
 
 # 2. Refusals, each bundle sound in every way but one (G: a good, newer bundle).
 bundle 29990101-5 $W/g $W/k1

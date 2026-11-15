@@ -4,6 +4,11 @@
 # fresh root by builder/build-image.sh (via chroot). Args: MODE (apply|diff),
 # optional SSH public key for root. Env: LOA_OVERLAY_BACKUP (optional) is the
 # backup directory instead of /var/backups/loa-overlay/<time>.
+# LOA_FIRST_INSTALL=1 (set by builder/in-target.sh, the image build) is the only
+# case that writes under /home: it seeds user-defaults/ and Omarchy's branding
+# and sets the shell.json and btop defaults. Without it (tools/apply-overlay.sh,
+# loa-update) nothing under /home is touched: user-defaults/ files that are
+# missing or differ are listed, and legacy leftovers are reported.
 set -e
 MODE=$1; PUB=$2
 S=/run/loa-overlay; rm -rf $S; mkdir -p $S
@@ -20,7 +25,10 @@ backup() {
     [ -z "${LOA_OVERLAY_BACKUP:-}" ] || sync
 }
 U="setpriv --reuid=1000 --regid=1000 --init-groups"
-n=0
+FIRST=${LOA_FIRST_INSTALL:-}
+n=0   # changes
+d=0   # user-defaults files that are missing or differ (update mode: listed only)
+l=0   # legacy files in the home directory (listed only)
 
 # 1. System files (owned by the port).
 cd $S/rootfs-overlay
@@ -38,18 +46,26 @@ for f in $(find . \( -type f -o -type l \) | sed 's|^\.||' | sort); do
     backup "$f"; mkdir -p "$(dirname "$f")"; rm -f "$f"; cp -a ".$f" "$f"; echo "updated $f"
 done
 
-# 2. User defaults: seed only if missing, as the user (no root-owned dirs in $HOME).
+# 2. User defaults. First install: seed what is missing, as the user (no
+# root-owned dirs in $HOME). Update: never written; list what is missing or
+# differs from the installed copy.
 cd $S/user-defaults
 for f in $(find . -type f | sed 's|^\.||' | sort); do
-    [ -e "$f" ] && continue
-    n=$((n + 1)); echo "seed $f"
-    [ $MODE = diff ] && continue
-    $U sh -c "mkdir -p '$(dirname "$f")' && cp '.$f' '$f'"
+    if [ -n "$FIRST" ]; then
+        [ -e "$f" ] && continue
+        n=$((n + 1)); echo "seed $f"
+        [ $MODE = diff ] && continue
+        $U sh -c "mkdir -p '$(dirname "$f")' && cp '.$f' '$f'"
+    else
+        [ -f "$f" ] && cmp -s ".$f" "$f" && continue
+        d=$((d + 1)); echo "differs from the default: $f"
+    fi
 done
 
 # 2b. Omarchy's branding defaults (its full installer seeds them; ours doesn't
 # run it): the screensaver and About logos, as `omarchy branding ... reset` does.
 for pair in screensaver.txt:logo.txt about.txt:icon.txt; do
+    [ -n "$FIRST" ] || break
     t=/home/omarchy/.config/omarchy/branding/${pair%%:*}; src=/usr/share/omarchy/${pair#*:}
     [ -e "$t" ] || [ ! -f "$src" ] && continue
     n=$((n + 1)); echo "seed $t"
@@ -57,35 +73,17 @@ for pair in screensaver.txt:logo.txt about.txt:icon.txt; do
     $U sh -c "mkdir -p '$(dirname "$t")' && cp '$src' '$t'"
 done
 
-# 3. One line in the user's hyprland.lua loads the device settings.
-H=/home/omarchy/.config/hypr/hyprland.lua
-L='dofile("/usr/share/loa/hypr/loa.lua")'
-if [ -f $H ] && ! grep -qF "$L" $H; then
-    n=$((n + 1)); echo "hyprland.lua: add $L after Omarchy's defaults"
-    if [ $MODE = apply ]; then
-        backup $H
-        $U python3 - "$H" "$L" <<'PY'
-import sys
-p, line = sys.argv[1], sys.argv[2]
-s = open(p).read()
-anchor = 'require("default.hypr.omarchy")'
-block = "\n-- LoA device settings (tablet panel, touch, keys, session); personal files below win.\n" + line + "\n"
-s = s.replace(anchor, anchor + block, 1) if anchor in s else s + block
-open(p, "w").write(s)
-PY
-    fi
-fi
-
-# 3b. Omarchy's idle lock off, once. Its shell locks after idle.lock seconds
+# 3. Omarchy's idle lock off, once. Its shell locks after idle.lock seconds
 # (default 300, the same moment hypridle switches the screen off); the lock ends
 # the screensaver, the shell takes that for activity and runs omarchy-system-wake,
 # which lights the screen again, every 5 minutes for as long as the tablet is
 # idle. The tablet has no lock to speak of (no password, no on-screen keyboard at
 # the lock screen), so the default goes to 0 = disabled. Only the untouched
 # default is changed, and only once (marker): a lock the user sets later stays.
+# First install only.
 J=/home/omarchy/.config/omarchy/shell.json
 M=/var/lib/loa/idle-lock-default-off
-if [ -f $J ] && [ ! -e $M ] && [ "$(jq -r '.idle.lock // 300' $J 2>/dev/null)" = 300 ]; then
+if [ -n "$FIRST" ] && [ -f $J ] && [ ! -e $M ] && [ "$(jq -r '.idle.lock // 300' $J 2>/dev/null)" = 300 ]; then
     n=$((n + 1)); echo "shell.json: idle.lock 300 -> 0 (Omarchy's idle lock relights the screen)"
     if [ $MODE = apply ]; then
         backup $J
@@ -94,12 +92,12 @@ if [ -f $J ] && [ ! -e $M ] && [ "$(jq -r '.idle.lock // 300' $J 2>/dev/null)" =
     fi
 fi
 
-# 3c. btop's CPU temperature sensor. With cpu_sensor = "Auto" btop takes any
+# 3b. btop's CPU temperature sensor. With cpu_sensor = "Auto" btop takes any
 # thermal zone with "cpu" in its name, and here that can be cpu-hw-trip-0/1,
 # which always read 95 C (a trip threshold, not a temperature). Point it at the
-# first prime core instead. Only an untouched "Auto" is changed.
+# first prime core instead. Only an untouched "Auto" is changed. First install only.
 B=/home/omarchy/.config/btop/btop.conf
-if [ -f $B ] && grep -q '^cpu_sensor = "Auto"' $B; then
+if [ -n "$FIRST" ] && [ -f $B ] && grep -q '^cpu_sensor = "Auto"' $B; then
     z=$(grep -lx cpu-1-0-0 /sys/class/thermal/thermal_zone*/type 2>/dev/null | head -1 | sed 's|.*thermal_zone\([0-9]*\)/type|\1|')
     n=$((n + 1)); echo "btop.conf: cpu_sensor Auto -> thermal${z:-33}/cpu-1-0-0"
     if [ $MODE = apply ]; then
@@ -107,22 +105,6 @@ if [ -f $B ] && grep -q '^cpu_sensor = "Auto"' $B; then
         $U sed -i "s|^cpu_sensor = \"Auto\"|cpu_sensor = \"thermal${z:-33}/cpu-1-0-0\"|" $B
     fi
 fi
-
-# 3d. hypridle.conf is a user default, seeded once: an installed tablet keeps the
-# copy it got. A copy that is still one we shipped earlier (sha256 below) is
-# replaced by the current one; an edited copy stays. hypridle reads it at start,
-# so the new timeouts apply from the next boot.
-C=/home/omarchy/.config/hypr/hypridle.conf
-if [ -f $C ]; then case $(sha256sum $C | cut -d' ' -f1) in
-    01dade3a4b24e31bd3f1e942973e25cd19855a528116da881f7643a90eb6cdb0|\
-    2af56065e876c2d187306740496fd26e6c547c16f3ef18db45ccb043ae794490|\
-    34f4677cae47bdd40771fdbf14d6b6d3bf47791144c5d0c4fa25242b0cc6d01a)
-        n=$((n + 1)); echo "hypridle.conf: replace the earlier default with the current one"
-        if [ $MODE = apply ]; then
-            backup $C
-            $U cp $S/user-defaults$C $C
-        fi ;;
-esac; fi
 
 # 4c. Omarchy patches dropped from the overlay (fixed in Omarchy 4.5). A dropped
 # patch that is still applied is taken out again first, or the installed file
@@ -157,17 +139,19 @@ for t in /usr/share/loa/X11/Xresources /usr/lib/loa/loa-xresources.sh; do
 done
 
 # 4. Legacy: LoA drop-ins that used to live in the home dir (now in /etc).
+# Reported, never removed: the update leaves the home directory alone.
 for f in .config/pipewire/pipewire.conf.d/50-loa-speakers.conf .config/pipewire/pipewire.conf.d/51-loa-mic.conf \
          .config/pipewire/client.conf.d/60-loa-no-client-rt.conf \
          .config/wireplumber/wireplumber.conf.d/50-loa-disable-asoc.conf \
          .config/wireplumber/wireplumber.conf.d/51-loa-no-v4l2.conf \
          .config/wireplumber/wireplumber.conf.d/52-loa-bluez-no-seat.conf; do
     t=/home/omarchy/$f; [ -e $t ] || continue
-    n=$((n + 1)); echo "remove legacy $t (now in /etc)"
-    [ $MODE = apply ] && { backup $t; rm -f $t; }
+    l=$((l + 1)); echo "legacy $t is still there (now in /etc); remove it by hand"
 done
 
 # 4b. Legacy: hand-made links for Omarchy's user units from the copied-tree days.
+# The /etc links are removed; the per-user enables in the home directory are
+# only reported.
 # The packaged units live in /usr/lib/systemd/user and the overlay now enables
 # them for every user (/etc/systemd/user/default.target.wants), so the old
 # /etc/systemd/user/<unit> links into /usr/share/omarchy/default (which shadow
@@ -181,10 +165,11 @@ for u in bt-agent.service omarchy-fcitx5.service; do
         [ $MODE = apply ] && { backup $t; rm -f $t; } ;; esac; fi
     t=/home/omarchy/.config/systemd/user/default.target.wants/$u
     [ -L $t ] && [ "$(readlink $t)" = /etc/systemd/user/$u ] || continue
-    n=$((n + 1)); echo "remove legacy $t (enabled for every user in /etc)"
-    [ $MODE = apply ] && { backup $t; rm -f $t; }
+    l=$((l + 1)); echo "legacy $t is still there (enabled for every user in /etc); remove it by hand"
 done
 cd /; rm -rf $S
+[ $d = 0 ] || echo "$d user default(s) missing or different from the default (home directory left alone)"
+[ $l = 0 ] || echo "$l legacy file(s) in the home directory left alone"
 
 if [ $MODE = diff ]; then echo "$n change(s) pending (nothing written)"; exit 0; fi
 [ -d $BK ] && echo "backups of replaced files: $BK"

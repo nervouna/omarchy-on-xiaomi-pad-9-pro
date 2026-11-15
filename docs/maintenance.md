@@ -5,11 +5,16 @@
 - `rootfs-overlay/` = files the port **owns**. Edit here, preview with
   `tools/apply-overlay.sh --diff`, apply with `tools/apply-overlay.sh`. Every file it
   replaces is backed up first to `/var/backups/loa-overlay/<time>/`.
-- `user-defaults/` = files the user may change: seeded only when missing.
+- `user-defaults/` = files the user may change: seeded by the first install (the image
+  build, `LOA_FIRST_INSTALL=1`) only. An update (`tools/apply-overlay.sh`, `loa-update`)
+  changes nothing under `/home`; it prints `differs from the default: <path>` for each
+  file that is missing or differs from the installed copy.
+- `/etc/hostname` is not in the overlay: the image build writes `shuntian` and an update
+  never replaces it. Rename a tablet with `hostnamectl set-hostname NAME`.
 - Never put a personal file (`~/.config/hypr/*.lua`, dotfiles) in `rootfs-overlay/`.
   Device Hyprland settings go in `/usr/share/loa/hypr/loa.lua`, which is loaded right after
-  Omarchy's defaults and before the personal files, so the user always wins. The
-  loader line in `hyprland.lua` is added by apply-overlay if missing.
+  Omarchy's defaults and before the personal files, so the user always wins. An update
+  does not edit `hyprland.lua` or any other file in the home directory.
 
 ## Updates (`omarchy update`)
 
@@ -429,8 +434,9 @@ Keep backups out of this repository: they hold secrets.
   touchscreen is disabled in Hyprland, so `loa-power-key` reads the key. A single tap
   does nothing.
 - To test the battery steps on the USB cable: `touch /run/user/1000/loa-idle-on-battery`.
-- `tools/overlay-install.sh` replaces an installed `hypridle.conf` only if it is still
-  a default shipped earlier (step 3d); it applies from the next boot.
+- An installed `hypridle.conf` is never replaced by an update: `tools/overlay-install.sh`
+  lists it as `differs from the default`, and the owner copies the new default over it
+  (it applies from the next boot).
 
 ## Prebuilt helper binaries
 
