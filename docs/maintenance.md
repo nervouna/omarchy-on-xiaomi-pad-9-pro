@@ -271,6 +271,87 @@ image records the bundle version it was built from (build date and `0`).
 `builder/test-loa-update.sh` tests all this in the CI build, in a chroot of the
 built root with a throwaway key.
 
+## Kernel (`loa-kernel`)
+
+The stock kernel has no user, PID or IPC namespaces, and they are built-in options:
+no module adds them. The tablets can run a kernel this repo builds instead: the public
+Android common kernel the stock one was built from (branch `android16-6.12-2026-03`,
+6.12.69; every project pinned in `kernel/manifest.xml`) with `kernel/loa.fragment`
+(`USER_NS`, `PID_NS`, `POSIX_MQUEUE`, `IPC_NS`; also `FHANDLE`, which systemd expects, and
+the netfilter `addrtype` match, which Docker's rules need). Its release is
+`6.12.69-android16-6-<kernel/VERSION>-4k`. The root image and the update bundle do not
+carry it: it is installed over USB, per tablet, and the stock kernel stays one command
+away. Everything in the overlay works on both kernels.
+
+**Why the stock modules still load.** The modules check a CRC per imported symbol
+(`CONFIG_MODVERSIONS`, derived from DWARF type information), not the release string.
+The rebuilt kernel exports the same CRC as the stock one for every symbol the tablet's
+974 modules import (#57). Options that change a structure the modules see cannot be
+added: `SYSVIPC` changes `task_struct` and with it every CRC, so `fakeroot` keeps needing
+`fakeroot-tcp`; `CGROUP_PIDS` changes 4224 CRCs, so there is no `pids` cgroup controller.
+Try a new option as a pull request that edits `kernel/loa.fragment`: the `check` job says
+whether it is safe.
+
+**Build.** `.github/workflows/kernel.yml` (official Kleaf toolchain, about 35 minutes)
+builds the tree twice, with the stock configuration (`baseline`) and with the fragment
+(`loa`), and `kernel/compare-symvers.py` fails the run when a CRC of the baseline changed
+or a symbol is gone. It runs on pull requests that touch `kernel/` or the workflow.
+`kernel/prepare.sh` makes the two source changes: the release string, and
+`EXPORT_SYMBOL_GPL` for `put_ipc_ns` and `init_ipc_ns`, which `rust_binder.ko` needs once
+IPC namespaces are on (a gap in the Android common kernel). To publish a build:
+
+```
+gh workflow run kernel.yml --ref main -f release=true
+```
+
+creates the release `kernel-<release>` with `boot-gz.img`, the GKI modules
+(`system_dlkm_staging_archive.tar.gz`), the configuration, the pinned manifest, the
+source diff and `SHA256SUMS`. A new build gets a new `kernel/VERSION` (`loa2`, ...): the
+GKI modules are signed with a key made for each build, so a kernel only loads its own.
+
+**Install.** With the tablet on USB, running Omarchy with the current overlay:
+
+```
+tools/install-kernel.sh             # the newest kernel-* release
+tools/install-kernel.sh --restore   # the stock kernel again
+```
+
+It copies the slot's stock `boot` image to `backups/` on the Mac, then runs
+`loa-kernel install` on the tablet, which
+
+- refuses unless the slot is marked successful and `boot` holds the stock kernel
+  `6.12.69-android16-6-g586bfab1b9c5-abogki536749445-4k` (or a saved copy of it exists);
+- keeps the stock image in `/var/lib/loa/kernel/boot_<slot>-stock.img`;
+- builds `/usr/lib/modules/<new release>/`: hard links to the stock tree's `ramdisk/` and
+  `vendor/` modules plus the rebuilt GKI modules. The stock tree is not touched;
+- writes `boot_<slot>` and reads it back. Nothing else is written.
+
+The boot image is put together on the tablet because `boot` is an AVB chain partition:
+the unlocked bootloader accepts a digest mismatch, but refuses a `boot` whose vbmeta is
+unsigned or whose footer is not at the end of the partition, and then stops in Fastboot
+(`fastboot boot` fails as well while such an image is in flash). So the stock vbmeta and
+footer stay in place and only the image in front of them is replaced, with the
+gzip-compressed kernel: the uncompressed one does not fit.
+
+`loa-kernel status` shows the running kernel, what `boot` holds and whether the stock
+image is saved.
+
+**If the tablet does not come up.** Hold Power + Volume Down for Fastboot, then
+`fastboot flash boot_<slot> backups/boot-stock-<hash>.img` and `fastboot reboot`. From a
+running system: `sudo loa-kernel restore`. Both module trees stay, so either kernel
+boots.
+
+**Android.** Android's own GKI modules (`system_dlkm`) are signed for the stock kernel
+and the rebuilt one does not trust them. `reboot-to-android` therefore writes the stock
+kernel back first; on the next Omarchy boot `loa-kernel-reinstall.service` writes the
+rebuilt kernel again, and the restart after that runs it. Holding Volume Up at power-on
+starts Android on whatever kernel is in `boot`: restore the stock kernel before using
+that path.
+
+**A new ROM.** `loa-kernel` only knows the stock kernel of OS4.0.5.0. After moving a
+tablet to another ROM, restore the stock kernel first, and repeat the #57 comparison
+against the new modules before building for it.
+
 ## Aquamarine (patched, `IgnorePkg = aquamarine`)
 
 Hyprland runs on a patched Aquamarine (`patches/aquamarine-0001-shuntian-*.patch`):
