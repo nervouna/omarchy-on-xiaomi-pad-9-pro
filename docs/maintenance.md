@@ -659,6 +659,48 @@ charge target. `/var/log/loa-powertest/restore.log` records each restore.
 `tools/powertest/tablet/loa-powertest.py end` by hand restores a tablet left in
 any state.
 
+## Usage digest
+
+One summary a day of what the tablet did, for the weekly planning run
+([#30](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/30)):
+
+- `loa-digest.timer` (daily at 00:10, `Persistent=true`) runs
+  `/usr/lib/loa/loa-digest.py` for the last 24 h and writes
+  `/var/lib/loa-digest/<date>.json` and a short `<date>.txt`; `<date>` is the day the
+  period ends in. On demand: `python3 /usr/lib/loa/loa-digest.py --since 2026-11-10
+  --until 2026-11-11` (local time; `@epoch` also works).
+- `loa-digest-sample.timer` runs the same script with `--sample` once a minute while
+  the tablet is awake (no `WakeSystem=`): one JSON line of about 170 bytes to
+  `samples/<date>.jsonl` (about 240 KB a day; finished days are gzipped by the next
+  digest). It holds what the journal does not: charge counter, battery and USB
+  current and voltage, screen (DPMS of `card0-DSI-1`), the hottest `cpu-*` zone
+  (not `cpu-hw-trip-*`, which reads the trip threshold), `quiet_therm`, cooling
+  devices above state 0 (not `panel0-backlight`, whose state is its brightness
+  level), and the time asleep since boot (`CLOCK_BOOTTIME` minus `CLOCK_MONOTONIC`).
+- Sections: `versions`, `battery` (drain in %/h from the charge counter, split into
+  screen on, screen off awake and s2idle; a split under 15 minutes is null with the
+  reason; the sign of the battery current is taken from the charge counter, else the
+  documented one), `thermals`, `suspend` (from loa-sleepd's journal lines; time asleep
+  from the step of real-time minus monotonic time at each `resumed:` line), `errors`
+  (kernel messages at err and above plus failed-unit messages, numbers and addresses
+  masked, top 30; the keyboard driver's touchpad packet lines are dropped) and
+  `crashes` (coredumps by executable name, failed units, Hyprland restarts). A section
+  whose source is missing is `null`, with the reason under `reasons`. Without samples
+  (days before the sampler ran) `battery` and `thermals` are null.
+- Retention: digests and samples older than 35 days are deleted by the digest run.
+- On the Mac: `tools/fetch-digests.sh` copies new digests from the tablet on the
+  cable into `${XDG_STATE_HOME:-~/.local/state}/loa-digest/<hostname>-<RAM>g/`
+  (nominal RAM: `shuntian-8g`, `shuntian-12g`) and prints the newest digest's date and
+  age per tablet; with no tablet reachable it says so and still exits 0. Pull only:
+  the tablet holds no destination or credential.
+- Left out on purpose: window titles, command lines, file names under `/home`, URLs,
+  SSIDs, MAC and IP addresses, serial numbers, typed text, boot and machine IDs. Every
+  journal string goes through one filter before it is written (`scrub()`, tested in
+  `tools/test_loa_digest.py`). Process and unit names stay. The digest never reads
+  `/sys/kernel/debug/qcom_cpuss_sleep_stats` (a read hung a core, #60).
+- Installed by an overlay update; the timers start at the next boot, or at once with
+  `systemctl start loa-digest.timer loa-digest-sample.timer`.
+
 ## Prebuilt helper binaries
 
 Ten ELF binaries are tracked in git. `tools/check-helpers.sh` (the `helpers`

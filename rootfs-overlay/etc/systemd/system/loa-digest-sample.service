@@ -1,0 +1,8 @@
+[Unit]
+Description=LoA usage digest: one battery, screen and thermal sample
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /usr/lib/loa/loa-digest.py --sample
+# One run a minute: keep the start and finish lines out of the journal.
+LogLevelMax=warning

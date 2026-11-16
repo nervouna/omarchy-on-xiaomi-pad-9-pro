@@ -1,0 +1,11 @@
+[Unit]
+Description=LoA usage digest sampler, once a minute while awake
+
+[Timer]
+# No WakeSystem=: the sampler never wakes the tablet from s2idle; the digest
+# takes the time asleep from the clocks.
+OnCalendar=*-*-* *:*:00
+AccuracySec=10s
+
+[Install]
+WantedBy=timers.target
