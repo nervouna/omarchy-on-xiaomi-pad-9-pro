@@ -283,9 +283,15 @@ no module adds them. The tablets run a kernel this repo builds instead: the publ
 Android common kernel the stock one was built from (branch `android16-6.12-2026-03`,
 6.12.69; every project pinned in `kernel/manifest.xml`) with `kernel/loa.fragment`
 (`USER_NS`, `PID_NS`, `POSIX_MQUEUE`, `IPC_NS`; also `FHANDLE`, which systemd expects, and
-the netfilter `addrtype` match, which Docker's rules need). Its release is
+the netfilter `addrtype` match, which Docker's rules need; from `nitian2` on, AF_ALG
+sockets (`CRYPTO_USER_API_HASH`, `_SKCIPHER`, `_AEAD`) with the three other options iwd
+asks for and the stock configuration lacks (`KEY_DH_OPERATIONS`,
+`PKCS8_PRIVATE_KEY_PARSER`, `CRYPTO_MD4`), and `DEVTMPFS` without `DEVTMPFS_MOUNT`:
+nothing mounts it yet, `/dev` still comes from mdev). Its release is
 `6.12.69-android16-6-<kernel/VERSION>-4k`, with `nitian1` as the first version
-("against heaven", after the device's codename `shuntian`, "with heaven").
+("against heaven", after the device's codename `shuntian`, "with heaven"). The kernel
+the tablets are expected to run is the one the pin names, which can be older than
+`kernel/VERSION`.
 
 The kernel a version of this repo expects is named in
 `rootfs-overlay/usr/share/loa/kernel/pin`: the release tag, the release string and the
@@ -305,6 +311,7 @@ The rebuilt kernel exports the same CRC as the stock one for every symbol the ta
 974 modules import (#57). Options that change a structure the modules see cannot be
 added: `SYSVIPC` changes `task_struct` and with it every CRC, so `fakeroot` keeps needing
 `fakeroot-tcp`; `CGROUP_PIDS` changes 4224 CRCs, so there is no `pids` cgroup controller.
+nftables (`NF_TABLES` with the usual `NFT_*` options) changes 1412 CRCs, so there is none.
 Try a new option as a pull request that edits `kernel/loa.fragment`: the `check` job says
 whether it is safe.
 
