@@ -5,7 +5,9 @@
 #  1b. make Omarchy's default/hypr/omarchy.lua load the device settings
 #     (/usr/share/loa/hypr/loa.lua) as its last step: appended, not patched, so
 #     it doesn't depend on the lines Omarchy ends the file with;
-#  2. mark the migrations in /usr/share/loa/omarchy/migrations-skip as done;
+#  2. mark the migrations in /usr/share/loa/omarchy/migrations-skip as done
+#     (LOA_NO_HOME=1, set by an overlay update: nothing is written under /home,
+#     the ones still to mark are listed);
 #  3. list pending migrations that touch boot, kernel modules, sshd or groups,
 #     for review before `omarchy-migrate` runs them (Omarchy detects this tablet
 #     as a Snapdragon laptop, aarch64-qualcomm);
@@ -64,9 +66,13 @@ for home in /home/*; do
     st=$home/.local/state/omarchy
     [ -d "$st" ] || continue
     owner=$(stat -c %u:%g "$home")
-    install -d -o "${owner%:*}" -g "${owner#*:}" "$st/migrations"
+    [ -n "${LOA_NO_HOME:-}" ] || install -d -o "${owner%:*}" -g "${owner#*:}" "$st/migrations"
     grep -v '^#' "$L/migrations-skip" | while read -r id reason; do
         [ -n "$id" ] && [ -f "/usr/share/omarchy/migrations/$id.sh" ] && [ ! -e "$st/migrations/$id.sh" ] || continue
+        if [ -n "${LOA_NO_HOME:-}" ]; then
+            echo "LoA: migration $id for $(basename "$home") will be marked skipped at the next Omarchy package change: $reason"
+            continue
+        fi
         install -m 644 -o "${owner%:*}" -g "${owner#*:}" /dev/null "$st/migrations/$id.sh"
         echo "LoA: skipped migration $id for $(basename "$home"): $reason"
     done

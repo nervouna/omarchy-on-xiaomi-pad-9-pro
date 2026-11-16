@@ -104,6 +104,13 @@ echo "-- changed by the test" >> $F; cp -a $F $W/F.before; rm -f $N
 # The home directory, edited and with defaults missing: an update changes none of it.
 echo "# edited by the test" >> $HD; cp -a $HD $W/HD.edited; cp -a $HM $W/HM.default
 rm -f $HM $HB; mkdir -p "$(dirname $HL)"; echo legacy > $HL; chown -R 1000:1000 /home/omarchy/.config
+# A skip marker missing from the home directory: an update lists it and writes
+# nothing (the byte-identical check below).
+SM=/home/omarchy/.local/state/omarchy/migrations
+SK=$(grep -v '^#' $W/repo/rootfs-overlay$N | while read -r id reason; do
+    [ -n "$id" ] && [ -e $SM/$id.sh ] && { echo "$id"; break; }; done)
+[ -n "$SK" ] || fail "the built root has a skip marker in $SM to remove"
+rm -f $SM/$SK.sh
 home_before=$(homesum)
 # Omarchy's omarchy.lua without the loa.lua loader (a tablet whose Omarchy has
 # not been upgraded since the post-upgrade script started adding it).
@@ -116,6 +123,7 @@ lu --file $W/b1/loa-update.tar || fail "a good bundle applies"
 [ "$(homesum)" = "$home_before" ] || fail "an update leaves every file under /home byte-identical"
 grep -qx "differs from the default: $HD" $W/out && grep -qx "differs from the default: $HM" $W/out &&
     grep -q "legacy $HL is still there" $W/out || fail "an update lists the user defaults that differ and the legacy files"
+grep -q "LoA: migration $SK for omarchy will be marked skipped" $W/out || fail "an update lists the skip marker it does not write"
 pass "an update leaves every file under /home byte-identical and lists what differs"
 [ "$(grep -c loa/hypr/loa.lua $O)" = 1 ] || fail "an update adds the loa.lua loader to $O"
 pass "an update adds the loa.lua loader to Omarchy's omarchy.lua"

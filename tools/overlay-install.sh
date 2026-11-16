@@ -177,9 +177,13 @@ if [ $MODE = diff ]; then echo "$n change(s) pending (nothing written)"; exit 0;
 # 5. Modes, accounts, units.
 chmod 755 /usr/lib/loa/*.sh /usr/lib/loa/busybox /usr/lib/loa/loa-helper /usr/lib/loa/loa-thp-launcher /usr/lib/loa/loa-xtouch /usr/lib/loa/android-run /usr/lib/loa/loa-splash-off
 # What the Omarchy pacman hook does, now and not at the next Omarchy update: our
-# patches, the loa.lua loader in default/hypr/omarchy.lua, the skipped
-# migrations. Idempotent, never fails.
-[ ! -x /usr/lib/loa/omarchy-post-upgrade.sh ] || /usr/lib/loa/omarchy-post-upgrade.sh
+# patches, the loa.lua loader in default/hypr/omarchy.lua. Idempotent, never
+# fails. It marks skipped migrations under /home only on a first install; an
+# update (LOA_NO_HOME=1) lists them, and the hook marks them at the next
+# Omarchy package change.
+if [ -x /usr/lib/loa/omarchy-post-upgrade.sh ]; then
+    if [ -n "$FIRST" ]; then /usr/lib/loa/omarchy-post-upgrade.sh; else LOA_NO_HOME=1 /usr/lib/loa/omarchy-post-upgrade.sh; fi
+fi
 mkdir -p /root/.ssh; chmod 700 /root/.ssh
 if [ -n "$PUB" ] && ! grep -qF "$PUB" /root/.ssh/authorized_keys 2>/dev/null; then
     echo "$PUB" >> /root/.ssh/authorized_keys; echo "added your SSH key"
