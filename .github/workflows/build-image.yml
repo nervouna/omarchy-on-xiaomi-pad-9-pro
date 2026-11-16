@@ -38,6 +38,7 @@ jobs:
       - run: tools/lint.sh
       - run: tools/test-check-update-tag.sh
       - run: python3 -m unittest tools/test_loa_digest.py
+      - run: python3 -m unittest tools/test_powertest.py
 
   helpers:
     runs-on: ubuntu-24.04-arm

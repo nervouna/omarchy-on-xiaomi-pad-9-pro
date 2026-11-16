@@ -3,12 +3,18 @@
 //   cdp.mjs wait-page [--timeout 60]        wait until the preview page has loaded
 //   cdp.mjs reload                          reload it and wait for the load event
 //   cdp.mjs replay --project DIR --edits FILE --period S --until EPOCH_S --out FILE
+//               [--step none|build|test --work DIR]
 // replay: every S seconds apply the next edit of a fixed list (forward through
 // the list, then back), wait until the page shows it (hot update or reload by
-// the dev server), reload the page, check again, then stay idle until the next
-// slot. The summary (cycles, failures, timings) goes to --out as JSON.
+// the dev server), reload the page, check again, run the step, then stay idle
+// until the next slot. Steps: `build` is a production `vite build` into
+// DIR/dist (outside the project, so the dev server does not see it); `test` is
+// `node --test` on project.test.mjs. A step that exits non-zero fails its cycle.
+// The summary (cycles, failures, timings) goes to --out as JSON.
 import { readFileSync, writeFileSync, renameSync } from "node:fs";
-import { join } from "node:path";
+import { spawn } from "node:child_process";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const PORT = 9222;
 const PAGE = "http://127.0.0.1:5173/";
@@ -116,6 +122,23 @@ async function reload(c, timeoutMs = 20000) {
   return Date.now() - t0;
 }
 
+function runStep(a) {
+  const node = process.execPath;
+  const argv =
+    a.step === "build"
+      ? [join(a.project, "node_modules/vite/bin/vite.js"), "build", "--outDir", join(a.work, "dist"),
+         "--emptyOutDir", "--logLevel", "warn"]
+      : ["--test", "--test-reporter=dot", join(dirname(fileURLToPath(import.meta.url)), "project.test.mjs")];
+  return new Promise((ok) => {
+    const t0 = Date.now();
+    const p = spawn(node, argv, { cwd: a.project, env: { ...process.env, LOA_PROJECT: a.project },
+                                  stdio: "ignore" });
+    const kill = setTimeout(() => p.kill("SIGKILL"), 60000);
+    p.on("error", () => { clearTimeout(kill); ok({ ms: Date.now() - t0, rc: -1 }); });
+    p.on("exit", (rc) => { clearTimeout(kill); ok({ ms: Date.now() - t0, rc: rc ?? -1 }); });
+  });
+}
+
 async function replay(a) {
   const edits = JSON.parse(readFileSync(a.edits, "utf8"));
   const steps = [
@@ -124,7 +147,10 @@ async function replay(a) {
   ];
   const period = Number(a.period) * 1000;
   const until = Number(a.until) * 1000;
-  const out = { cycles: 0, failed: 0, failures: [], hot_ms: [], reload_ms: [], started: Date.now() / 1000 };
+  const step = a.step || "none";
+  if (!["none", "build", "test"].includes(step)) throw new Error(`unknown step ${step}`);
+  const out = { cycles: 0, failed: 0, failures: [], hot_ms: [], reload_ms: [], step, step_ms: [], step_failed: 0,
+                late: 0, period_s: Number(a.period), started: Date.now() / 1000 };
   const save = () => {
     out.ended = Date.now() / 1000;
     writeFileSync(a.out + ".tmp", JSON.stringify(out));
@@ -140,6 +166,7 @@ async function replay(a) {
     const slot = t0 + k * period;
     if (slot + period > until) break; // only whole cycles
     if (Date.now() < slot) await sleep(slot - Date.now());
+    else if (Date.now() > slot + 1000) out.late++; // the previous cycle overran its period
     const s = steps[k % steps.length];
     const path = join(a.project, s.file);
     const src = readFileSync(path, "utf8");
@@ -147,7 +174,8 @@ async function replay(a) {
     if (!src.includes(s.from)) {
       fail = `edit ${k % steps.length}: text not found in ${s.file}`;
     } else {
-      writeFileSync(path, src.replace(s.from, s.to));
+      // A function, not a string: a replacement string would turn the edit's `$$` into `$`.
+      writeFileSync(path, src.replace(s.from, () => s.to));
       const hot = await waitMark(c, s.mark, 15000);
       if (hot === null) fail = `edit ${k % steps.length}: not shown after the change`;
       else {
@@ -157,6 +185,14 @@ async function replay(a) {
           if ((await waitMark(c, s.mark, 5000)) === null) fail = `edit ${k % steps.length}: not shown after reload`;
         } catch (e) {
           fail = `edit ${k % steps.length}: reload: ${e.message}`;
+        }
+        if (!fail && step !== "none") {
+          const r = await runStep({ ...a, step });
+          out.step_ms.push(r.ms);
+          if (r.rc !== 0) {
+            out.step_failed++;
+            fail = `edit ${k % steps.length}: ${step} exited ${r.rc}`;
+          }
         }
       }
     }

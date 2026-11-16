@@ -7,9 +7,14 @@
 
 `run` cuts the charger input for each block (the USB data link stays up), so
 system power is the battery's voltage times its current. Workloads:
+  agent   Pi Agent on a fixed prompt against the LAN endpoint (the primary number;
+          night only)
+  replay  a fixed cycle of source edits with hot reload, a page reload and an optional
+          step (a production build or a test run): the daytime stand-in for agent
   idle    screen on at a fixed backlight, terminal and preview page open, nothing running
-  replay  a fixed cycle of source edits with hot reload and a page reload (the baseline)
-  agent   Pi Agent on a fixed prompt against the LAN endpoint (the cross-check)
+A replay variant is named in --workloads as replay[+STEP][@PERIOD], for example
+replay+build@10 (a `vite build` in every 10 s cycle) or replay@3; plain `replay`
+takes --replay-step and --period.
 Each repeat starts between --window charge levels; the runner drains or charges
 the battery to get there. A watchdog on the tablet restores everything when this
 runner stops sending heartbeats. The LLM endpoint may be used only between
@@ -22,7 +27,6 @@ find the tablet's USB interface from there.
 """
 import argparse
 import json
-import math
 import os
 import signal
 import statistics
@@ -232,7 +236,7 @@ def block_valid(b):
     if en.get("backlight") not in (None, b.get("backlight")):
         return f"backlight changed during the block ({en.get('backlight')})"
     d = b.get("result", {}).get("driver", {})
-    if b["workload"] == "replay":
+    if b["workload"].startswith("replay"):
         if not d.get("cycles"):
             return "replay ran no cycles"
         if d.get("failed"):
@@ -243,8 +247,43 @@ def block_valid(b):
     return None
 
 
+STEPS = ("none", "build", "test")
+
+
+def parse_workload(name, period, step):
+    """`idle`, `agent` or `replay[+STEP][@PERIOD]` -> (base, step, period); the
+    defaults come from --replay-step and --period."""
+    base, _, per = name.partition("@")
+    base, _, st = base.partition("+")
+    if base in ("idle", "agent"):
+        if st or per:
+            raise ValueError(f"{name}: only replay takes +STEP or @PERIOD")
+        return base, None, None
+    if base != "replay":
+        raise ValueError(f"{name}: unknown workload")
+    st = st or step
+    if st not in STEPS:
+        raise ValueError(f"{name}: step must be one of {', '.join(STEPS)}")
+    try:
+        per = float(per) if per else float(period)
+    except ValueError:
+        raise ValueError(f"{name}: period is not a number") from None
+    if per <= 0:
+        raise ValueError(f"{name}: period must be positive")
+    return "replay", st, per
+
+
+def ordered(workloads):
+    """The report leads with the agent workload, the primary number."""
+    return sorted(workloads, key=lambda w: w != "agent")
+
+
 def sd(xs):
-    return statistics.stdev(xs) if len(xs) > 1 else float("nan")
+    return statistics.stdev(xs) if len(xs) > 1 else None
+
+
+def fmt_sd(x):
+    return "-" if x is None else f"{x:.3f}"
 
 
 def report(outdir):
@@ -270,40 +309,48 @@ def report(outdir):
               f"- Each block: {meta['args']['seconds']:.0f} s with the charger input cut, first "
               f"{meta['args']['discard']:.0f} s discarded, loa-powerlog every {meta['args']['interval']:.0f} s "
               f"({meta['args']['sample']:.0f} s samples); start charge window {meta['args']['window']} %; "
-              f"replay period {meta['args']['period']:.0f} s", ""]
+              f"plain `replay`: period {meta['args']['period']:g} s, step "
+              f"{meta['args'].get('replay_step', 'none')}", ""]
     lines += ["## Result", "", "| Workload | Valid repeats | Mean (W) | SD across repeats (W) | Blocks (W) |",
               "|---|---|---|---|---|"]
     summary = {}
-    for wl in meta["args"]["workloads"]:
+    for wl in ordered(meta["args"]["workloads"]):
         bs = [b for b in blocks if b["workload"] == wl]
         ok = [b for b in bs if not b.get("invalid") and not b.get("skipped")]
         ws = [b["power"]["mean_w"] for b in ok]
-        summary[wl] = {"n": len(ws), "mean_w": statistics.fmean(ws) if ws else None, "sd_w": sd(ws) if ws else None}
+        summary[wl] = {"n": len(ws), "mean_w": statistics.fmean(ws) if ws else None, "sd_w": sd(ws)}
         if not ws:
             why = "; ".join(sorted({b.get("skipped") or b.get("invalid") or "" for b in bs})) or "not run"
             lines.append(f"| {wl} | 0 | - | - | {why} |")
             continue
-        lines.append(f"| {wl} | {len(ws)} | {statistics.fmean(ws):.2f} | {sd(ws):.3f} | "
+        lines.append(f"| {wl} | {len(ws)} | {statistics.fmean(ws):.2f} | {fmt_sd(sd(ws))} | "
                      + " ".join(f"{x:.2f}" for x in ws) + " |")
     lines += [""]
-    r, ag = summary.get("replay", {}), summary.get("agent", {})
-    if r.get("sd_w") is not None and not math.isnan(r["sd_w"]):
-        lines.append(f"Replay repeatability: SD {r['sd_w']:.3f} W, "
-                     + ("within" if r["sd_w"] <= 0.1 else "**outside**") + " the 0.1 W limit.")
-    if r.get("mean_w") and ag.get("mean_w"):
-        diff = ag["mean_w"] - r["mean_w"]
-        lines.append(f"Agent minus replay: {diff:+.2f} W ({100 * diff / r['mean_w']:+.0f} %); agent SD "
-                     f"{ag['sd_w']:.3f} W.")
+    ag = summary.get("agent", {})
+    for wl, r in summary.items():
+        if not wl.startswith("replay"):
+            continue
+        if r.get("sd_w") is not None:
+            lines.append(f"{wl} repeatability: SD {r['sd_w']:.3f} W, "
+                         + ("within" if r["sd_w"] <= 0.1 else "**outside**") + " the 0.1 W limit.")
+        if r.get("mean_w") and ag.get("mean_w"):
+            diff = ag["mean_w"] - r["mean_w"]
+            lines.append(f"Agent minus {wl}: {diff:+.2f} W ({100 * diff / r['mean_w']:+.0f} %); agent SD "
+                         f"{fmt_sd(ag['sd_w'])} W.")
     lines += ["", "## Blocks", "",
               "| # | Workload | Start | Charge | Mean W | SD in block | Battery C | CPU max C | Mem MB start/end | "
               "Swap MB start/end | Work | Note |", "|---|---|---|---|---|---|---|---|---|---|---|---|"]
     for i, b in enumerate(blocks, 1):
         p, res = b.get("power") or {}, b.get("result") or {}
         st, en, d = res.get("start", {}), res.get("end", {}), res.get("driver", {})
-        if b["workload"] == "replay":
+        if b["workload"].startswith("replay"):
             work = f"{d.get('cycles', 0)} cycles, {d.get('failed', 0)} failed"
             if d.get("hot_ms"):
                 work += f", hot update median {statistics.median(d['hot_ms'])} ms"
+            if d.get("step_ms"):
+                work += f", {d.get('step')} median {statistics.median(d['step_ms']):.0f} ms"
+            if d.get("late"):
+                work += f", {d['late']} cycles started late"
         elif b["workload"] == "agent":
             runs = d.get("runs", [])
             work = (f"{len(runs)} Pi runs ({sum(x.get('finished', False) for x in runs)} finished), "
@@ -380,6 +427,7 @@ def wait_charge(a, hb, state):
 
 def run_block(a, wl, tag, outdir, hb, state):
     b = {"workload": wl, "tag": tag, "backlight": a.backlight}
+    base, step, period = parse_workload(wl, a.period, a.replay_step)
     ctl("display on")
     ctl("services start", timeout=240)
     time.sleep(a.settle)
@@ -398,8 +446,8 @@ def run_block(a, wl, tag, outdir, hb, state):
     hb.quiet.set()
     ctl(f"input suspend --max-seconds {a.seconds + 120}")
     b["t"] = time.time()
-    ctl(f"block start {wl} --seconds {a.seconds} --tag {tag} --interval {a.interval} --sample {a.sample} "
-        f"--period {a.period}", timeout=120)
+    ctl(f"block start {base} --seconds {a.seconds} --tag {tag} --interval {a.interval} --sample {a.sample} "
+        + (f"--period {period} --step {step}" if base == "replay" else ""), timeout=120)
     end = time.time() + a.seconds
     while time.time() < end:
         time.sleep(min(15, max(0.5, end - time.time())))
@@ -455,6 +503,11 @@ def cmd_run(a):
         subprocess.Popen(["caffeinate", "-i", "-w", str(os.getpid())])
     a.lo, a.hi = (int(x) for x in a.window.split("-"))
     a.workloads = a.workloads.split(",")
+    for wl in a.workloads:
+        try:
+            parse_workload(wl, a.period, a.replay_step)
+        except ValueError as exc:
+            sys.exit(f"--workloads: {exc}")
     run_id = time.strftime("%Y%m%d-%H%M%S")
     outdir = a.out or os.path.join(os.environ.get("XDG_STATE_HOME", os.path.expanduser("~/.local/state")),
                                    "loa-powertest", run_id)
@@ -563,10 +616,15 @@ def main():
     r.add_argument("--workloads", default="agent,replay,idle")
     r.add_argument("--repeats", type=int, default=3)
     r.add_argument("--seconds", type=float, default=600)
-    r.add_argument("--window", default="85-90", help="charge range in %% each block starts in")
+    # 70-90: idle drew the same at 70-90 % as at 85-90 % (difference under the SD, #96).
+    r.add_argument("--window", default="70-90", help="charge range in %% each block starts in")
     r.add_argument("--charge-margin", type=int, default=3, help="charge to window low + this")
     r.add_argument("--backlight", type=int, default=820)
-    r.add_argument("--period", type=float, default=30, help="replay: seconds per edit cycle")
+    # The default replay is replay+build@4, chosen by measurement (#96; candidates in
+    # docs/maintenance.md, "Power baseline").
+    r.add_argument("--period", type=float, default=4, help="replay: seconds per edit cycle")
+    r.add_argument("--replay-step", choices=STEPS, default="build",
+                   help="replay: extra work in every cycle (a production build or a test run)")
     r.add_argument("--interval", type=float, default=10)
     r.add_argument("--sample", type=float, default=1)
     r.add_argument("--discard", type=float, default=20)

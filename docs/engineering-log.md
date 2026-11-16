@@ -1832,3 +1832,22 @@ nothing. Each fix uncovered the next cause:
 - Not checked: whether the input cut survives a cable replug (needs hands); the
   absolute offset of the live USB data link against a really unplugged tablet.
 
+
+### 2026-11-16: a daytime replay with real work, and the charge window (#96)
+
+- Replay candidates, idle re-measured and the charge window: numbers in maintenance.md
+  ("Power baseline"). Default replay is now `replay+build@4`, default window 70-90 %.
+- The replay corrupted `src/format.js` once its edit list wrapped round: `cdp.mjs`
+  applied each edit with `String.replace(from, to)`, and a replacement string turns
+  the `$$` of the price edit into `$`, so the reverse edit wrote `${v.toFixed(2)}`
+  and every later cycle on that file failed. A 30 s period never wrapped in a
+  10-minute block (20 cycles, 24 steps); a 3 s period did. Fixed with a replacement
+  function.
+- A production `vite build` of the test project takes about 150 ms on the tablet and
+  `node --test` of its four checks about 100 ms, so a step per cycle adds little; the
+  edit cycle's hot update, reload and repaint are the cost, and it grows faster than
+  linearly as the period shortens (4 s: +0.56 W over idle without a step; 3 s with a
+  build: +0.94 W).
+- The USB link dropped four times today (#72), each time at the runner's
+  `input suspend` call, within seconds of the input cut; the runner recovered every
+  time and the interrupted blocks were run again. Each drop cost 9 to 16 minutes.
