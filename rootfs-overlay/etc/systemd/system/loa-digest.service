@@ -1,0 +1,11 @@
+[Unit]
+Description=LoA usage digest of the last 24 h (/var/lib/loa-digest)
+# docs/maintenance.md, "Usage digest". Reads the journal and the samples of
+# loa-digest-sample.timer; never reads /sys/kernel/debug/qcom_cpuss_sleep_stats.
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /usr/lib/loa/loa-digest.py
+Nice=10
+IOSchedulingClass=idle
+TimeoutStartSec=300
