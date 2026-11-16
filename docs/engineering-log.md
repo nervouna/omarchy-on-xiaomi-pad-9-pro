@@ -1739,6 +1739,36 @@ nothing. Each fix uncovered the next cause:
   carries this is the first run); the hint line inside `loa-update` (the copy that runs
   an update is the old one).
 
+### 2026-11-16: `nitian2` is built: AF_ALG, the options iwd needs, devtmpfs (#90)
+
+- Option trials on the branch `spike/kernel-namespaces`, each variant on top of the
+  `nitian1` fragment, its symvers compared with the `nitian1` release's
+  (`kernel/compare-symvers.py`, 10451 symbols) and its configuration read back from the
+  image:
+
+  | Run | Options | CRCs changed / gone |
+  |---|---|---|
+  | 43718758406 | `NF_TABLES`, `NF_TABLES_INET/IPV4/IPV6`, `NFT_CT`, `NFT_NAT`, `NFT_MASQ`, `NFT_COMPAT`, `NFT_REJECT` | 1412 / 0: dead end |
+  | 43718758406 | `CRYPTO_USER_API_HASH`, `_SKCIPHER`, `_AEAD` | 0 / 0 |
+  | 43718758406 | `DEVTMPFS` | 0 / 0 |
+  | 43718758406 | `SQUASHFS`, `SQUASHFS_ZSTD`, `SQUASHFS_XZ` | 0 / 0 |
+  | 43815675474 | `KEY_DH_OPERATIONS` (selects `CRYPTO_DH`) | 0 / 0 |
+  | 43815675474 | `PKCS8_PRIVATE_KEY_PARSER`, `CRYPTO_MD4` | 0 / 0 |
+  | 43815675474 | AF_ALG, `DEVTMPFS` and the three above together | 0 / 0 |
+
+- `nitian2` takes the last row. AF_ALG alone would not have been enough for iwd: of the
+  options iwd's documentation lists, the `nitian1` configuration also lacks
+  `KEY_DH_OPERATIONS`, `PKCS8_PRIVATE_KEY_PARSER` and `CRYPTO_MD4`. Squashfs is left out:
+  nothing here uses it. It stays a known-safe option.
+- `DEVTMPFS` is on without `DEVTMPFS_MOUNT`, and nothing in stage 1 or the overlay mounts
+  a devtmpfs, so `/dev` is populated by mdev as before. Using it is a stage 1 change
+  (`init_boot`) that still has to work on the stock kernel.
+- Size: the gzip image of `nitian1` is 17.2 MB and the limit (the stock vbmeta offset in
+  `boot`) is 41.6 MB.
+- Not checked: `nitian2` has not been booted on a tablet; the pin still names `nitian1`.
+  Whether iwd runs on it is untested, and so is a switch from NetworkManager to iwd. That
+  nftables changes `struct net` is a guess at why its CRCs change, not read in the source.
+
 ### 2026-11-16: power baseline on battery with the cable attached (#93)
 
 - `tools/powertest/powertest.py run` measures three workloads (idle, replay, agent) on the
