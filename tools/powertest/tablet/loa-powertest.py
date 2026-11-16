@@ -6,7 +6,8 @@
     loa-powertest.py input suspend --max-seconds N | resume
     loa-powertest.py display on|off | backlight RAW
     loa-powertest.py services start|stop      dev server, test Chromium, terminal
-    loa-powertest.py block start WORKLOAD --seconds S --tag TAG | block stop --tag TAG
+    loa-powertest.py block start WORKLOAD --seconds S --tag TAG [--period S --step none|build|test]
+    loa-powertest.py block stop --tag TAG
                                               (start also schedules its own stop: a USB link
                                               drop on the Mac's side cannot stretch a block)
     loa-powertest.py conditions | warmup | end
@@ -534,6 +535,7 @@ def cmd_block(a):
         if a.workload == "replay":
             unit("driver", ["node", f"{SRC}/tablet/cdp.mjs", "replay", "--project", PROJECT,
                             "--edits", f"{SRC}/edits.json", "--period", str(a.period),
+                            "--step", a.step, "--work", WORK,
                             "--until", str(until), "--out", f"{WORK}/driver.json"])
         elif a.workload == "agent":
             unit("driver", [sys.executable, os.path.abspath(__file__), "agent-loop", "--until", str(until),
@@ -732,6 +734,8 @@ def main():
     k.add_argument("--interval", type=float, default=10)
     k.add_argument("--sample", type=float, default=1)
     k.add_argument("--period", type=float, default=30)
+    k.add_argument("--step", choices=("none", "build", "test"), default="none",
+                   help="replay: extra work in every cycle")
     k.add_argument("--resume", action="store_true", help="stop: resume the charger input afterwards")
     sub.add_parser("conditions")
     sub.add_parser("warmup")

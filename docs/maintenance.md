@@ -569,7 +569,7 @@ attached and nobody at the tablet
 
 ```
 tools/powertest/powertest.py setup      # once, and after a change to the test project
-tools/powertest/powertest.py run        # 3 workloads x 3 repeats x 10 min, about 3 to 4 h
+tools/powertest/powertest.py run        # 3 workloads x 3 repeats x 10 min
 tools/powertest/powertest.py report DIR # rebuild report.md from a run's directory
 ```
 
@@ -593,15 +593,18 @@ battery voltage times battery current (`battery/current_now` is positive when
 discharging). A reboot clears every vote (checked: cut before `systemctl reboot`,
 `suspend_status` 0 and 1.1 A input 37 s after boot). A cable replug was not checked.
 
+**Which number tuning is compared on**
+([#95](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/95)): the
+`agent` workload, run at night (00:00 to 08:00), is the primary number; the report
+leads with it. In daytime, compare on the default `replay`, which was chosen to
+draw about what the agent draws (candidates below). A run in daytime is
+`--workloads replay,idle`; the agent blocks would be skipped anyway.
+
 **Workloads** (all three have the same services running: the Vite dev server of
 the fixed project in `tools/powertest/project`, a test Chromium on its page and a
 terminal, all under `/opt/loa-powertest`, nothing in the user's home):
 
-- `idle`: nothing else running. Separates backlight and base draw from compute.
-- `replay` (the baseline): every 30 s the next edit of `tools/powertest/edits.json`
-  (forward through the list, then back), wait until the page shows it, reload the
-  page, check again. A repeat with a failed cycle is invalid. No model in the loop.
-- `agent` (the cross-check): Pi Agent with `tools/powertest/prompt.txt` against
+- `agent` (the primary number): Pi Agent with `tools/powertest/prompt.txt` against
   the LAN endpoint, temperature 0, looped with a project reset until the block
   ends. The endpoint gets one warm-up request before every agent block (its first
   answer after 5 idle minutes takes about 17 s). A failed warm-up, a 503 or any
@@ -613,14 +616,60 @@ terminal, all under `/opt/loa-powertest`, nothing in the user's home):
   `/root/.config/loa-powertest/llm.env` on the tablet (mode 600) and nowhere else;
   Pi's `models.json` is written to `/run/loa-powertest/pi-agent` for the block and
   removed after it. No output of Pi leaves the tablet, only counts.
+- `replay` (the daytime stand-in; default `replay+build@4`): every `--period`
+  seconds (default 4) the next edit of
+  `tools/powertest/edits.json` (forward through the list, then back), wait until the
+  page shows it, reload the page, check again, then the `--replay-step` (default
+  `build`):
+  `build` is a production `vite build` into `/run/loa-powertest/work/dist`
+  (outside the project, so the dev server does not react to it), `test` is
+  `node --test` on `tools/powertest/tablet/project.test.mjs` (checks that hold in
+  every state the edits put the project in). A step that exits non-zero fails its
+  cycle; a repeat with a failed cycle is invalid. No model in the loop. A variant is
+  named in `--workloads` as `replay[+STEP][@PERIOD]`, for example `replay+build@4`,
+  so variants can be interleaved in one run; plain `replay` takes the defaults.
+- `idle`: nothing else running. Separates backlight and base draw from compute.
+
+**Replay candidates** ([#96](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/96),
+2026-11-16, image `20261116-1`, kernel `nitian1`, same fixed conditions as the first
+baseline). Target: within 0.3 W of the agent's 5.64 W (SD 0.061 W) with an SD across
+repeats of at most 0.1 W. The old replay (30 s, no step) drew 4.70 W. 3 repeats of
+10 minutes each, start window 85-90 %:
+
+| Candidate | Mean | SD across repeats | Blocks | Agent minus candidate |
+|---|---|---|---|---|
+| `replay+build@4` (a `vite build` per cycle) | 5.30 W | 0.064 W | 5.27 5.26 5.37 | +0.34 W |
+| `replay+test@4` (`node --test` per cycle) | 5.20 W | 0.057 W | 5.26 5.18 5.16 | +0.44 W |
+| `replay@4` (shorter period, no step) | 5.17 W | 0.080 W | 5.14 5.12 5.27 | +0.47 W |
+| `replay+build@3` | 5.55 W | 0.110 W | 5.50 5.68 5.47 | +0.09 W |
+| `idle`, same session as the first three | 4.61 W | 0.018 W | 4.63 4.62 4.60 | |
+
+The first three ran interleaved in one run; `replay+build@3` was added after their
+first repeats fell short and ran in a second run straight after. A production build
+of this project takes about 150 ms and the test run about 100 ms, so the steps add
+little (0.03 to 0.13 W over `replay@4`); the edit cycle itself (a hot update, a
+page reload and Chromium repainting the page) is most of the cost, and it rises
+faster than linearly as the period shortens. No candidate meets both targets:
+`replay+build@3` is 0.09 W from the agent but its SD is 0.110 W; of those with an SD
+within 0.1 W, `replay+build@4` comes closest and is the default, 0.34 W short of
+the agent. So the daytime replay ranks tuning options by a load about 0.7 W over
+idle, not quite the agent's 1.0 W. Today's idle (4.61 W) matches the first
+baseline's 4.62 W, so the once-a-minute digest sampler costs nothing measurable.
+
+**Charge window** (#96): idle measured in the default 85-90 % window gave 4.615 W
+(SD 0.018 W, 3 blocks, all started at 88 %); idle with `--window 70-90` gave 4.621 W
+(SD 0.019 W, 7 blocks started at 84, 80, 77, 73, 72, 70 and 73 %). The difference,
+0.006 W, is below the SD, so the default window is now 70-90 %: blocks run back to
+back while the charge stays in it, and the runner charges only below 70 % (to 73 %).
 
 **Fixed conditions** (recorded in each report): backlight at a fixed raw value
 (`--backlight`, default 820 of 4095) with `loa-autobrightness` paused
 (`/run/loa-autobrightness-off`); hypridle held off by a systemd idle inhibitor
 (it honours one, checked with a test listener; the inhibitor ends with its
 process); Omarchy's screensaver timer off (`omarchy-toggle-idle stay-awake`,
-put back only if it was off before); each block starts between 85 and 90 %
-charge: the runner drains with the input cut, or charges to 88 % with the screen
+put back only if it was off before); each block starts between 70 and 90 %
+charge (`--window`): the runner drains with the input cut, or charges to the window's
+low end plus 3 % (`--charge-margin`) with the screen
 on at backlight 40 and the services stopped (not with the screen off: then the
 Mac loses the USB link for minutes,
 [#72](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/72));
