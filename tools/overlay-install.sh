@@ -176,6 +176,10 @@ if [ $MODE = diff ]; then echo "$n change(s) pending (nothing written)"; exit 0;
 
 # 5. Modes, accounts, units.
 chmod 755 /usr/lib/loa/*.sh /usr/lib/loa/busybox /usr/lib/loa/loa-helper /usr/lib/loa/loa-thp-launcher /usr/lib/loa/loa-xtouch /usr/lib/loa/android-run /usr/lib/loa/loa-splash-off
+# What the Omarchy pacman hook does, now and not at the next Omarchy update: our
+# patches, the loa.lua loader in default/hypr/omarchy.lua, the skipped
+# migrations. Idempotent, never fails.
+[ ! -x /usr/lib/loa/omarchy-post-upgrade.sh ] || /usr/lib/loa/omarchy-post-upgrade.sh
 mkdir -p /root/.ssh; chmod 700 /root/.ssh
 if [ -n "$PUB" ] && ! grep -qF "$PUB" /root/.ssh/authorized_keys 2>/dev/null; then
     echo "$PUB" >> /root/.ssh/authorized_keys; echo "added your SSH key"
