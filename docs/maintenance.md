@@ -670,14 +670,15 @@ One summary a day of what the tablet did, for the weekly planning run
   period ends in. On demand: `python3 /usr/lib/loa/loa-digest.py --since 2026-11-10
   --until 2026-11-11` (local time; `@epoch` also works).
 - `loa-digest-sample.timer` runs the same script with `--sample` once a minute while
-  the tablet is awake (no `WakeSystem=`): one JSON line of about 170 bytes to
-  `samples/<date>.jsonl` (about 240 KB a day; finished days are gzipped by the next
-  digest). It holds what the journal does not: charge counter, battery and USB
+  the tablet is awake (no `WakeSystem=`): one JSON line of about 130 bytes to
+  `samples/<date>.jsonl` (about 190 KB for a day awake, about 26 KB once the next
+  digest has gzipped it). It holds what the journal does not: charge counter, battery and USB
   current and voltage, screen (DPMS of `card0-DSI-1`), the hottest `cpu-*` zone
   (not `cpu-hw-trip-*`, which reads the trip threshold), `quiet_therm`, cooling
   devices above state 0 (not `panel0-backlight`, whose state is its brightness
   level), and the time asleep since boot (`CLOCK_BOOTTIME` minus `CLOCK_MONOTONIC`).
-- Sections: `versions`, `battery` (drain in %/h from the charge counter, split into
+- Sections: `versions` (as installed when the digest runs, plus the boots in the
+  period), `battery` (drain in %/h from the charge counter, split into
   screen on, screen off awake and s2idle; a split under 15 minutes is null with the
   reason; the sign of the battery current is taken from the charge counter, else the
   documented one), `thermals`, `suspend` (from loa-sleepd's journal lines; time asleep
