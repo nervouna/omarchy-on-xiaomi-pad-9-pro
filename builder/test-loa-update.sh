@@ -104,14 +104,29 @@ echo "-- changed by the test" >> $F; cp -a $F $W/F.before; rm -f $N
 # The home directory, edited and with defaults missing: an update changes none of it.
 echo "# edited by the test" >> $HD; cp -a $HD $W/HD.edited; cp -a $HM $W/HM.default
 rm -f $HM $HB; mkdir -p "$(dirname $HL)"; echo legacy > $HL; chown -R 1000:1000 /home/omarchy/.config
+# A skip marker missing from the home directory: an update lists it and writes
+# nothing (the byte-identical check below).
+SM=/home/omarchy/.local/state/omarchy/migrations
+SK=$(grep -v '^#' $W/repo/rootfs-overlay$N | while read -r id reason; do
+    [ -n "$id" ] && [ -e $SM/$id.sh ] && { echo "$id"; break; }; done)
+[ -n "$SK" ] || fail "the built root has a skip marker in $SM to remove"
+rm -f $SM/$SK.sh
 home_before=$(homesum)
+# Omarchy's omarchy.lua without the loa.lua loader (a tablet whose Omarchy has
+# not been upgraded since the post-upgrade script started adding it).
+O=/usr/share/omarchy/default/hypr/omarchy.lua
+sed -i '/^-- LoA device settings/,$d' $O
+[ "$(grep -c loa/hypr/loa.lua $O)" = 0 ] || fail "removing the loa.lua loader from $O for the test"
 bundle 29990101-1 $W/b1 $W/k1
 swap_key
 lu --file $W/b1/loa-update.tar || fail "a good bundle applies"
 [ "$(homesum)" = "$home_before" ] || fail "an update leaves every file under /home byte-identical"
 grep -qx "differs from the default: $HD" $W/out && grep -qx "differs from the default: $HM" $W/out &&
     grep -q "legacy $HL is still there" $W/out || fail "an update lists the user defaults that differ and the legacy files"
+grep -q "LoA: migration $SK for omarchy will be marked skipped" $W/out || fail "an update lists the skip marker it does not write"
 pass "an update leaves every file under /home byte-identical and lists what differs"
+[ "$(grep -c loa/hypr/loa.lua $O)" = 1 ] || fail "an update adds the loa.lua loader to $O"
+pass "an update adds the loa.lua loader to Omarchy's omarchy.lua"
 [ "$(cat $S/version)" = 29990101-1 ] || fail "a good bundle records its version"
 pass "a root without a recorded version takes any bundle"
 pass "a good bundle applies and records its version"
@@ -138,6 +153,8 @@ same $HM $W/HM.default && same $HD $W/HD.edited && [ -e $HL ] ||
 [ ! -f /usr/share/omarchy/logo.txt ] || [ -e $HB ] || fail "a first install seeds the missing branding default"
 grep -qx "seed $HM" $W/out && ! grep -q 'differs from the default' $W/out || fail "a first install reports what it seeded"
 pass "a first install seeds what is missing and leaves an edited user default alone"
+[ "$(grep -c loa/hypr/loa.lua $O)" = 1 ] || fail "a second install leaves one loa.lua loader in $O"
+pass "a second install leaves one loa.lua loader in omarchy.lua"
 
 # 2. Refusals, each bundle sound in every way but one (G: a good, newer bundle).
 bundle 29990101-5 $W/g $W/k1
