@@ -32,7 +32,7 @@ pen and Bluetooth headphones are not yet re-checked on 4.5
 | Speakers via PipeWire -> stock AGM/AudioReach | works (*user*) |
 | Volume buttons / Omarchy volume OSD | works (*user*) |
 | Boot stock Android on demand (`reboot-to-android`) | works |
-| User, PID and IPC namespaces (bubblewrap, Codex's sandbox, `PrivateUsers=`) | works with the rebuilt kernel `nitian1` (`sudo loa-kernel update`), on both tablets since 2026-11-15; s2idle and resume seen in the logs on its first build. Touch, pen, sound and cover on it are not yet confirmed by the owner |
+| User, PID and IPC namespaces (bubblewrap, Codex's sandbox, `PrivateUsers=`) | works with the rebuilt kernel (`sudo loa-kernel update`; `nitian1` on both tablets since 2026-11-15, `nitian2` on the 8 GB tablet since 2026-11-17); s2idle and resume seen in the logs on its first build. Touch, pen, sound and cover on it are not yet confirmed by the owner |
 | Built-in microphones via PipeWire -> stock PAL | works |
 | Power button: short press screen off/on, hold -> Omarchy system menu | works (*user*) |
 | Brightness control (panel0-backlight) | works (*user*) |
@@ -108,7 +108,8 @@ Each item is tracked in its issue:
 
 Not tracked as an issue:
 
-- Omarchy's Wi-Fi UI expects iwd, which can't run (the kernel lacks AF_ALG).
+- Omarchy's Wi-Fi UI expects iwd, which can't run on the stock kernel (no AF_ALG) and
+  has not been tried on `nitian2`, which has it.
   NetworkManager is used instead; the Omarchy network panel uses
   NetworkManager directly.
 - Memory: 8 GB model = 7.3 GiB usable. zram (sized to RAM) + earlyoom keep heavy
