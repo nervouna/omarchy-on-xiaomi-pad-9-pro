@@ -1851,3 +1851,33 @@ nothing. Each fix uncovered the next cause:
 - The USB link dropped four times today (#72), each time at the runner's
   `input suspend` call, within seconds of the input cut; the runner recovered every
   time and the interrupted blocks were run again. Each drop cost 9 to 16 minutes.
+
+### 2026-11-17: `nitian2` boots on the 8 GB tablet and becomes the pinned kernel (#90)
+
+- Installed over USB with `tools/install-kernel.sh kernel-6.12.69-android16-6-nitian2-4k`
+  (`boot_b` sha256 `cce8ddccf2b2...`), dev watchdog at 300 s, reboot. Up over USB in about
+  70 s, `loa-boot-ok` reached, boot counter back to 0.
+- Compared with `nitian1` minutes earlier on the same tablet: 647 modules before and
+  after, the same names (the 648 in the entries above was not seen on either kernel
+  today; which module went is not known); `loa-modules: loaded=342 failed=7`; taint
+  4608; `bluetooth`, `rfkill` and `rust_binder` loaded; no failed units, `running`; none
+  of "disagrees about version", "Unknown symbol", "module verification failed",
+  "protected symbol" in `journalctl -k -b 0`; Wi-Fi connected with the same address,
+  Bluetooth powered, Hyprland up, charging. As `omarchy`: `bwrap --unshare-all`,
+  `codex sandbox -- id`; as root `systemd-run -p PrivateUsers=yes`.
+- The new options at run time: AF_ALG sockets bind `hash sha256` (correct digest of
+  "abc"), `hash md4`, `skcipher cbc(aes)` and `aead gcm(aes)`; `/proc/config.gz` shows
+  all seven options; `devtmpfs` is in `/proc/filesystems` and `/dev` is still the mdev
+  tmpfs.
+- The dev watchdog is not disarmed by `loa-boot-ok`: `loa-helper watchdog` only looks
+  for `/run/loa-watchdog-disarm`, and nothing in the overlay creates it. With
+  `/loa/dev-watchdog` set, a boot that came up fine still goes to Fastboot when the
+  time runs out unless someone runs `touch /run/loa-watchdog-disarm` first (done by hand
+  here, about 50 s after boot).
+- `loa-kernel install` keeps only the last build in `/var/lib/loa/kernel`, so after
+  this install the tablet no longer holds `nitian1`'s files; its module tree is removed
+  at the next install.
+- Not checked: iwd itself and a move from NetworkManager; touch, pen, sound, the cover;
+  suspend and resume; power (the baselines of #93 and #96 are from `nitian1`);
+  `loa-kernel update` downloading `nitian2` by this pin (the canary of the release that
+  carries it); the 12 GB tablet, which stays on `nitian1`.

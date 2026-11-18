@@ -91,10 +91,12 @@ The port runs on the stock firmware and kernel modules, which set some hard limi
 - **No memory pressure info** (`cgroup_disable=pressure` on the bootloader command
   line): no systemd-oomd; zram + earlyoom instead. 8 GB is tight for heavy
   Electron apps; 12 GB is comfortable.
-- **No AF_ALG crypto sockets**: no iwd; NetworkManager instead.
+- **NetworkManager, not iwd**: the stock kernel has no AF_ALG crypto sockets. The
+  rebuilt kernel has them from `nitian2` on; iwd has not been tried on it yet.
 - **No SysV IPC**: stock `fakeroot` (and so `makepkg`/AUR builds) fails;
   `fakeroot-tcp` from the AUR replaces it.
-- **No devtmpfs**: `/dev` is populated by mdev, with udev layered on top.
+- **No devtmpfs in use**: `/dev` is populated by mdev, with udev layered on top (the
+  rebuilt kernel has devtmpfs from `nitian2` on; nothing mounts it).
 - **Patched Aquamarine**: updating Hyprland means rebuilding Aquamarine with
   `patches/` (see [docs/maintenance.md](docs/maintenance.md)).
 
