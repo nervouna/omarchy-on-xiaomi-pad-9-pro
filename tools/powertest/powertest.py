@@ -162,10 +162,9 @@ class Heartbeat(threading.Thread):
 
 # ---------------------------------------------------------------- analysis
 
-def block_power(path, discard, seconds):
-    """Mean system power of one block from its loa-powerlog file (input cut, so the
-    battery alone supplies the system; positive battery current = discharging)."""
-    recs, hdr = [], {}
+def read_log(path):
+    """(header, records) of a loa-powerlog file; a line cut short is skipped."""
+    hdr, recs = {}, []
     with open(path) as f:
         for line in f:
             try:
@@ -176,6 +175,13 @@ def block_power(path, discard, seconds):
                 hdr = r
             else:
                 recs.append(r)
+    return hdr, recs
+
+
+def block_power(path, discard, seconds):
+    """Mean system power of one block from its loa-powerlog file (input cut, so the
+    battery alone supplies the system; positive battery current = discharging)."""
+    hdr, recs = read_log(path)
     interval = hdr.get("interval", 10)
     if not recs:
         return {"mean_w": None, "records": 0, "covered_s": 0, "expected_s": seconds - discard, "interval": interval}
@@ -198,17 +204,8 @@ def block_power(path, discard, seconds):
 
 def link_records(path):
     """How many powerlog records saw traffic on usb0 (0 in a record: the link was down)."""
-    n = up = 0
-    for line in open(path):
-        try:
-            r = json.loads(line)
-        except ValueError:
-            continue
-        if r.get("header"):
-            continue
-        n += 1
-        up += bool(r.get("d", {}).get("net", {}).get("usb0"))
-    return [up, n]
+    recs = read_log(path)[1]
+    return [sum(bool(r.get("d", {}).get("net", {}).get("usb0")) for r in recs), len(recs)]
 
 
 COVERAGE = 0.9
@@ -216,7 +213,7 @@ COVERAGE = 0.9
 
 def block_valid(b):
     p = b.get("power") or {}
-    if not p or p.get("mean_w") is None:
+    if p.get("mean_w") is None:
         return "no power records after the discard"
     # Coverage: at least 90 % of the measured time, with one sample interval of slack
     # (a power log that died early leaves a short file that would otherwise pass).
@@ -361,16 +358,14 @@ def report(outdir):
         note = b.get("skipped") or b.get("invalid") or ""
         if b.get("usb_link_records"):
             note = (note + " " if note else "") + "USB link up in %d/%d records" % tuple(b["usb_link_records"])
-        lines.append(f"| {i} | {b['workload']} | {time.strftime('%H:%M', time.localtime(b.get('t', 0)))} | "
-                     f"{st.get('capacity', '-')}>{en.get('capacity', '-')} % | "
-                     f"{p['mean_w']:.2f} | {p['sd_within_w']:.2f} | {p['battery_c']} | {p['cpu_max_c']} | "
-                     if p.get("mean_w") is not None else
-                     f"| {i} | {b['workload']} | {time.strftime('%H:%M', time.localtime(b.get('t', 0)))} | - | - | - | - | - | ")
+        head = f"| {i} | {b['workload']} | {time.strftime('%H:%M', time.localtime(b.get('t', 0)))} | "
         if p.get("mean_w") is not None:
-            lines[-1] += (f"{st.get('mem_used_mb')}/{en.get('mem_used_mb')} | {st.get('swap_used_mb')}/{en.get('swap_used_mb')} | "
-                          f"{work} | {note} |")
+            lines.append(head + f"{st.get('capacity', '-')}>{en.get('capacity', '-')} % | "
+                         f"{p['mean_w']:.2f} | {p['sd_within_w']:.2f} | {p['battery_c']} | {p['cpu_max_c']} | "
+                         f"{st.get('mem_used_mb')}/{en.get('mem_used_mb')} | {st.get('swap_used_mb')}/{en.get('swap_used_mb')} | "
+                         f"{work} | {note} |")
         else:
-            lines[-1] += f"- | - | {work} | {note} |"
+            lines.append(head + f"- | - | - | - | - | - | - | {work} | {note} |")
     lines += ["", "Mean W is the battery's voltage times its current with the charger input cut, so it is the "
               "system draw without charger losses; the live USB data link adds an unknown, constant offset.", ""]
     for n in meta.get("notes", []):
@@ -579,8 +574,7 @@ def cmd_run(a):
                         continue
                     meta["blocks"].append(b)
                     save()
-                    p = b.get("power") or {}
-                    mw = p.get("mean_w")
+                    mw = (b.get("power") or {}).get("mean_w")
                     log(f"{tag}: " + (f"{mw:.3f} W" if mw is not None else "no mean")
                         + (f" INVALID: {b['invalid']}" if b["invalid"] else ""))
                     if not b["invalid"]:

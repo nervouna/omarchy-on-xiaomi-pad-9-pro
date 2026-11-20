@@ -8,10 +8,7 @@
 real=${LOA_HOOK_REAL:-/usr/bin/omarchy-hook}
 step=${LOA_SETUP_REPO:-/usr/lib/loa/setup-omarchy-repo.sh}
 if [ "${1:-}" = pre-refresh-pacman ]; then
-    if [ "$(id -u)" = 0 ]; then
-        "$step" || echo "omarchy-hook: $step failed; continuing" >&2
-    else
-        sudo "$step" || echo "omarchy-hook: $step failed; continuing" >&2
-    fi
+    sudo=sudo; [ "$(id -u)" != 0 ] || sudo=
+    $sudo "$step" || echo "omarchy-hook: $step failed; continuing" >&2
 fi
 exec "$real" "$@"

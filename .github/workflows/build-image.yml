@@ -37,8 +37,7 @@ jobs:
       - run: command -v shellcheck >/dev/null || sudo apt-get install -y --no-install-recommends shellcheck || { sleep 30; sudo apt-get install -y --no-install-recommends shellcheck; }
       - run: tools/lint.sh
       - run: tools/test-check-update-tag.sh
-      - run: python3 -m unittest tools/test_loa_digest.py
-      - run: python3 -m unittest tools/test_powertest.py
+      - run: python3 -m unittest tools/test_loa_digest.py tools/test_powertest.py
 
   helpers:
     runs-on: ubuntu-24.04-arm
