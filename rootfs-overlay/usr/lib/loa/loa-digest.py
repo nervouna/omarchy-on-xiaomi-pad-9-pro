@@ -21,6 +21,7 @@ scrub() before it reaches the output.
 import argparse
 import collections
 import datetime
+import functools
 import glob
 import gzip
 import json
@@ -222,9 +223,9 @@ def suspend_section(entries, mode=None):
 # ---------------------------------------------------------------- samples
 
 def take_sample():
-    def mili(path, div=1000):
+    def mili(path):
         v = num(path)
-        return None if v is None else round(v / div)
+        return None if v is None else round(v / 1000)
 
     s = {"t": round(time.time()), "b": (rd("/proc/sys/kernel/random/boot_id") or "")[:8],
          "sl": round(max(0.0, time.clock_gettime(time.CLOCK_BOOTTIME) - time.clock_gettime(time.CLOCK_MONOTONIC)), 1),
@@ -481,13 +482,10 @@ def build(since, until, sdir):
         m = re.search(r"\[(\w+)\]", rd("/sys/power/mem_sleep") or "")
         return suspend_section(e, m.group(1) if m else None), None
 
-    failed = []
-
+    @functools.cache
     def failed_records():
-        if not failed:
-            failed.append(journal(["MESSAGE_ID=" + UNIT_RESULT_ID, *span(since, until)],
-                                  ["MESSAGE", "UNIT", "USER_UNIT"]))
-        return failed[0]
+        return journal(["MESSAGE_ID=" + UNIT_RESULT_ID, *span(since, until)],
+                       ["MESSAGE", "UNIT", "USER_UNIT"])
 
     def errors():
         r = subprocess.run(["journalctl", "--no-pager", "-q", "-o", "cat", "_TRANSPORT=kernel",
