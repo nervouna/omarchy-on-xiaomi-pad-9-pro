@@ -263,11 +263,21 @@ def wifi():
     return {"network": None}
 
 
-def meminfo():
+def parse_meminfo(text):
     m = {}
-    for line in (rd("/proc/meminfo") or "").splitlines():
+    for line in (text or "").splitlines():
         k, v = line.split(":", 1)
         m[k] = int(v.split()[0])
+    return m
+
+
+def ram_mb(text):
+    total = parse_meminfo(text).get("MemTotal")
+    return total // 1024 if total else None
+
+
+def meminfo():
+    m = parse_meminfo(rd("/proc/meminfo"))
     return {"mem_used_mb": (m["MemTotal"] - m["MemAvailable"]) // 1024,
             "swap_used_mb": (m["SwapTotal"] - m["SwapFree"]) // 1024}
 
@@ -296,7 +306,7 @@ def conditions():
         "versions": versions(),
         "wifi": wifi(),
         "llm_model": llm_env().get("LLM_MODEL"),
-        "ram_mb": num("/proc/meminfo") // 1024 if num("/proc/meminfo") else None,
+        "ram_mb": ram_mb(rd("/proc/meminfo")),
         **meminfo(),
     }
 
@@ -314,7 +324,7 @@ def cmd_begin(a):
     if os.path.exists(LOCK):
         die("refusing: a power test is already active (%s)" % rd(LOCK), 4)
     if not os.path.exists(PI) or not os.path.isdir(f"{PROJECT}/node_modules"):
-        die("test software missing: run tools/powertest/setup.sh first", 5)
+        die("test software missing: run tools/powertest/powertest.py setup first", 5)
     os.makedirs(WORK, exist_ok=True)
     os.chown(WORK, 1000, 1000)
     logdir = f"{LOGROOT}/{a.run_id}"

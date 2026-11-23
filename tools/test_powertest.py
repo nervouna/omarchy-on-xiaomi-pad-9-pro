@@ -14,6 +14,10 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 spec = importlib.util.spec_from_file_location("powertest", os.path.join(HERE, "powertest", "powertest.py"))
 P = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(P)
+tspec = importlib.util.spec_from_file_location("loa_powertest",
+                                               os.path.join(HERE, "powertest", "tablet", "loa-powertest.py"))
+T = importlib.util.module_from_spec(tspec)
+tspec.loader.exec_module(T)
 
 
 def block(workload, rep, mean_w, driver=None):
@@ -100,6 +104,53 @@ class Workloads(unittest.TestCase):
         drv = {"cycles": 10, "failed": 1, "hot_ms": [], "reload_ms": [], "step": "build", "step_failed": 1}
         b = block("replay+build@10", 1, 5.0, drv)
         self.assertIn("failed", P.block_valid(b))
+
+
+class RunBeginFails(unittest.TestCase):
+    def test_failed_begin_keeps_the_run_record(self):
+        out = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, out)
+        calls = []
+
+        def ctl(args, timeout=180, check=True):
+            calls.append(args.split()[0])
+            if args.startswith("begin"):
+                raise RuntimeError("ssh: connect failed")
+            return {}
+
+        saved = {n: getattr(P, n) for n in ("ctl", "preflight", "push", "report", "log", "sys")}
+        fake_sys = type("S", (), {"platform": "linux", "exit": staticmethod(SystemExit)})
+        P.ctl, P.preflight, P.push = ctl, lambda: {"hostname": "tablet"}, lambda: None
+        P.report, P.log, P.sys = lambda d: "report", lambda m: None, fake_sys
+        try:
+            a = P.argparse.Namespace(
+                window="70-90", workloads="idle", period=4, replay_step="none", out=out, seconds=600, settle=30,
+                repeats=1, max_attempts=1, backlight=820, heartbeat_timeout=300)
+            P.cmd_run(a)
+        finally:
+            for n, v in saved.items():
+                setattr(P, n, v)
+        meta = json.load(open(os.path.join(out, "run.json")))
+        self.assertIn("end", meta)
+        self.assertTrue(any("ssh: connect failed" in n for n in meta["notes"]))
+        self.assertEqual(calls, ["begin", "end"])
+
+
+class Meminfo(unittest.TestCase):
+    SAMPLE = ("MemTotal:        7864320 kB\nMemFree:          200000 kB\nMemAvailable:    4000000 kB\n"
+              "SwapTotal:       2097152 kB\nSwapFree:        2097152 kB\n")
+
+    def test_ram_mb_reads_memtotal(self):
+        self.assertEqual(T.ram_mb(self.SAMPLE), 7680)
+
+    def test_ram_mb_missing(self):
+        self.assertIsNone(T.ram_mb(""))
+        self.assertIsNone(T.ram_mb(None))
+
+    def test_missing_software_message_names_setup(self):
+        src = open(os.path.join(HERE, "powertest", "tablet", "loa-powertest.py")).read()
+        self.assertIn("tools/powertest/powertest.py setup", src)
+        self.assertNotIn("setup.sh first", src)
 
 
 if __name__ == "__main__":
