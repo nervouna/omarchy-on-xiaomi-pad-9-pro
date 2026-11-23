@@ -587,7 +587,8 @@ def cmd_run(a):
         hb.stop.set()
         e = ctl("end", check=False, timeout=120)
         holder.stop.set()  # after `end`: the lock is gone, so its end of file changes nothing
-        holder.join(20)
+        if holder.is_alive():  # never started when `begin` failed
+            holder.join(20)
         meta["end"] = e
         save()
     print(report(outdir))
