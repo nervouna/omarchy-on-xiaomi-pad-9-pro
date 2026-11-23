@@ -203,6 +203,7 @@ activation. Leave Android at least 16–20 GiB: its OTAs stage into userdata.
 | Situation | Way out |
 |---|---|
 | Boot loops / no desktop | After 3 boots that never reach `loa-boot-ok`, stage 1 goes to Fastboot by itself |
+| Trying a kernel or boot change | `echo 300 > /loa/dev-watchdog` before the reboot arms the dev watchdog for one boot: stage 1 goes to Fastboot after 300 s unless the boot reached `loa-boot-ok`, which disarms it (`/run/loa-watchdog-disarm`) and removes `/loa/dev-watchdog` |
 | Stops in Fastboot after a plain reboot, and `fastboot reboot` comes straight back | The slot ran out of retries (`fastboot getvar slot-retry-count:<slot>` is 0). `fastboot set_active <slot>`, `fastboot reboot`, then `reboot-to-android` once so Android marks the slot successful. `journalctl -b -u loa-boot-ok` shows the boots left while a slot is unmarked |
 | Want Android | Hold **Volume Up** right after the logo, or `reboot-to-android` in Omarchy |
 | Back to stock for good | `fastboot flash init_boot_<slot> images/init_boot-stock-OS4.0.5.0.img` |

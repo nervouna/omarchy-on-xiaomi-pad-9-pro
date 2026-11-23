@@ -10,7 +10,10 @@ ExecStartPre=/usr/bin/systemctl is-active --quiet loa-desktop.service
 # Also moves loa-update's boot marker from "tried" (set by
 # loa-update-rollback.service) to "booted": the update stays on trial until
 # loa-update-confirm.service. Never touches a marker not yet tried.
-ExecStart=/usr/bin/sh -c 'echo 0 > /loa/boot-attempts; grep -qx tried /var/lib/loa-update/pending 2>/dev/null && echo booted > /var/lib/loa-update/pending; touch /run/loa-boot-ok; sync'
+# Also ends a dev watchdog (armed for one boot): stage 1's loa-helper stops on
+# /run/loa-watchdog-disarm, and /loa/dev-watchdog goes so the next boot is not
+# armed. These steps run before sync, whose status is the unit's.
+ExecStart=/usr/bin/sh -c 'echo 0 > /loa/boot-attempts; grep -qx tried /var/lib/loa-update/pending 2>/dev/null && echo booted > /var/lib/loa-update/pending; touch /run/loa-boot-ok; touch /run/loa-watchdog-disarm; rm -f /loa/dev-watchdog; sync'
 # Warns in the journal while the bootloader is still counting this slot's boots down.
 ExecStartPost=-/usr/lib/loa/slot-check.sh
 [Install]

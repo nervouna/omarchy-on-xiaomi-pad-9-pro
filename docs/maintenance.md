@@ -702,7 +702,8 @@ block.
 
 **Safety.** The runner holds `/run/loa-powertest/active` on the tablet for the
 run and refuses to start while `/var/lib/loa-update/pending` or `/loa/dev-watchdog`
-exists. Everything is restored by `loa-powertest.py end` (input, backlight,
+exists (a boot that reaches `loa-boot-ok` disarms the dev watchdog and removes that
+file). Everything is restored by `loa-powertest.py end` (input, backlight,
 auto-brightness, inhibitor, screensaver timer, test processes, lock). It also
 runs on its own: when the runner dies (it keeps an SSH session open whose end of
 file the tablet reads; after 20 s without a successor session the tablet
