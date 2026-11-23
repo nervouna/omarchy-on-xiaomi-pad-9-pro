@@ -9,6 +9,7 @@ stock kernel back.
   loa-kernel install [DIR]   DIR holds boot-gz.img and system_dlkm_staging_archive.tar.gz;
                              without DIR: the kernel installed last (kept in /var/lib/loa/kernel)
   loa-kernel modules         rebuild the module tree of the installed kernel
+  loa-kernel hint            print one line when the pinned kernel is not the installed one
   loa-kernel restore         write the saved stock boot image back
 
 The rebuilt kernel is the public Android common kernel the stock one was built
@@ -335,11 +336,7 @@ def cmd_install(d):
 
 
 def cmd_modules():
-    new = os.uname().release
-    try:
-        new = open(f"{STATE}/installed").read().split()[0]
-    except OSError:
-        pass
+    new = installed() or os.uname().release
     if not OURS.match(new):
         die("no kernel of this project is installed")
     build_modules(new, f"{STATE}/{ARCHIVE}")

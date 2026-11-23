@@ -128,8 +128,10 @@ def run(dev):
         while True:
             if last_on and tap is not None:
                 os.close(tap); tap = None
-            elif not last_on and tap is None and find(TAP_DEV):
-                tap = os.open(find(TAP_DEV), os.O_RDONLY | os.O_NONBLOCK)
+            elif not last_on and tap is None:
+                tap_dev = find(TAP_DEV)
+                if tap_dev:
+                    tap = os.open(tap_dev, os.O_RDONLY | os.O_NONBLOCK)
             if down is not None:
                 timeout = max(0.0, down + HOLD - time.monotonic())
             elif last_on and not lid_closed:
