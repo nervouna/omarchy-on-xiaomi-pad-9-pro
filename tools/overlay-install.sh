@@ -212,6 +212,15 @@ rm -f /etc/systemd/zram-generator.conf
 /usr/lib/loa/install-omarchy-font.sh
 systemd-hwdb update
 systemctl daemon-reload
+# Timers the overlay newly enables start now, not at the next boot (only with
+# systemd running: not in the image-build chroot or a test root).
+if [ -d /run/systemd/system ]; then
+    for t in /etc/systemd/system/timers.target.wants/*.timer; do
+        [ -e "$t" ] || continue
+        t=$(basename "$t")
+        systemctl is-active --quiet "$t" || systemctl start "$t" || echo "could not start $t"
+    done
+fi
 systemctl unmask NetworkManager >/dev/null 2>&1 || true
 systemctl disable iwd >/dev/null 2>&1 || true
 systemctl enable loa-mdev loa-modules loa-subsys loa-usb-gadget loa-thp loa-boot-ok loa-desktop seatd sshd \
