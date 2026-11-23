@@ -1900,3 +1900,36 @@ nothing. Each fix uncovered the next cause:
   was out of scope).
 - Not checked: on a tablet (overlay applied, watchdog armed, `watchdog disarmed` in
   the kernel log, still up after the timeout).
+
+### 2026-11-23: the Wi-Fi driver's cld80211 diagnostics are off (#103)
+
+- `nl_srv_bcast: send msg to cld80211 fails for app id N` was most of the err-level
+  kernel log on an idle tablet (about 170k lines a day): `qca_cld3_wcn7750` multicasts
+  its diagnostics on the `cld80211` generic-netlink family for Android's `cnss_diag`,
+  and nothing subscribes here. Before (8 GB tablet, Wi-Fi connected): 872 lines in
+  801 s of uptime, 691 app id 27 (kworker, twice a second), 159 app id 28
+  (`wlan_logging_thread`), 22 app id 17 (softirq, about twice a minute).
+- Found by experiment (one reboot each, the ini edited by hand, lines counted from boot):
+
+  | Keys set | Lines | Uptime | By app id |
+  |---|---|---|---|
+  | none (before) | 872 | 801 s | 27: 691, 28: 159, 17: 22 |
+  | `gEnablefwlog=0 wlanLoggingEnable=0 gMulticastHostFwMsgs=0` | 4 | 609 s | 17: 3, 26: 1 |
+  | `gEnablefwlog=0 wlanLoggingEnable=0` | 65 | 304 s | 17: 64, 26: 1 |
+  | `gMulticastHostFwMsgs=0` | 165 | 301 s | 28: 165 |
+  | `wlanLoggingEnable=0 gMulticastHostFwMsgs=0` | 3 | 605 s | 17: 1, 26: 2 |
+
+  Each key alone makes the ids the other one silences louder than before.
+  `gEnablefwlog` is not needed. Wi-Fi stayed connected in every try.
+- Shipped: `wlanLoggingEnable=0` and `gMulticastHostFwMsgs=0` in a marked block above
+  the ini's `END` line, written by `/usr/lib/loa/wlan-ini-keys.sh` from both install
+  paths (`setup-wlan-files.sh`, which every overlay update runs, now also adds the block
+  to an ini that is already there; `import-vendor.sh`). See `docs/maintenance.md`
+  ("Wi-Fi driver ini").
+- After, with the overlay applied on the original ini and one reboot: 2 lines in 619 s
+  (app ids 17 and 26, once each, around the Wi-Fi connect), `wlan0` connected, a 10 MB
+  download completed, no failed units, no WLAN firmware crash or recovery line. Running
+  `setup-wlan-files.sh` twice more left the ini byte-identical.
+- `icnss2: Recursive recovery allowed for WLAN` at probe is a setting, not a recovery:
+  it is in every boot's log, with or without the keys.
+- Left for later in #103: `rdbg`, the charger and fuel-gauge status lines.

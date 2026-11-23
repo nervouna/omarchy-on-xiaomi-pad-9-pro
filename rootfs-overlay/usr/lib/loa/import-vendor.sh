@@ -80,6 +80,7 @@ cp -a $W/modem/image/. $T/usr/lib/firmware/image/
 # The Wi-Fi driver's config: the stock firmware dir only has a dangling link to it.
 F=$T/usr/lib/firmware/wlan/qca_cld/wcn7750/WCNSS_qcom_cfg.ini
 rm -f $F; install -m 644 $W/vendor/etc/wifi/wcn7750/WCNSS_qcom_cfg.ini $F
+/usr/lib/loa/wlan-ini-keys.sh $F   # this port's keys (never fails)
 log "firmware: $(du -sh $T/usr/lib/firmware | cut -f1)"
 
 # THP touch chroot: stock Bionic (runtime APEX) + stock libs + our launcher.

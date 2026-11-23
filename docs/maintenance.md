@@ -716,6 +716,37 @@ charge target. `/var/log/loa-powertest/restore.log` records each restore.
 `tools/powertest/tablet/loa-powertest.py end` by hand restores a tablet left in
 any state.
 
+## Wi-Fi driver ini (`WCNSS_qcom_cfg.ini`)
+
+`/usr/lib/firmware/wlan/qca_cld/wcn7750/WCNSS_qcom_cfg.ini` is the vendor's file
+(copied from the vendor partition by `setup-wlan-files.sh` and `import-vendor.sh`)
+plus one block of this port's keys between `# loa: begin port keys` and
+`# loa: end port keys`, above the file's `END` line (the driver reads nothing after
+it). `/usr/lib/loa/wlan-ini-keys.sh <file>` writes the block; both install paths call
+it, and `setup-wlan-files.sh` runs on every overlay update, so an existing install
+gets the block too. It is idempotent: the block is rewritten in place, a vendor line
+that sets one of the keys is commented out with `#loa: ` (the port's value wins,
+once), and the file is only replaced when it changes. To change the keys, edit
+`KEYS` in that script.
+
+| Key | What it silences |
+|---|---|
+| `gMulticastHostFwMsgs=0` | app id 27 (firmware diagnostics, twice a second from a kworker) and app id 17 (service messages, about twice a minute) |
+| `wlanLoggingEnable=0` | app id 28 (host logging, the `wlan_logging_thread`) |
+
+Either key alone leaves the other's ids failing, at a higher rate than before
+(measured: `gMulticastHostFwMsgs=0` alone, 165 app id 28 lines in 5 minutes;
+without it, 64 app id 17 lines). `gEnablefwlog=0` is not needed. With both, a boot
+logs about 3 lines in its first 10 minutes (app ids 17 and 26, around Wi-Fi
+connect), against about 650 to 1200 without.
+
+Background ([#103](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/103)):
+the driver multicasts its diagnostics on the `cld80211` generic-netlink family for
+Android's `cnss_diag`. Nobody listens here, so every send fails with an err-level
+`nl_srv_bcast: send msg to cld80211 fails for app id N` kernel line, about once a
+second without these keys. Never put `gEnableWoW` in the block: the WPSS firmware
+crashes (engineering log).
+
 ## Usage digest
 
 One summary a day of what the tablet did, for the weekly planning run
