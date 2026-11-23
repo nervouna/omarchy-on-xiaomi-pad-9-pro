@@ -1881,3 +1881,22 @@ nothing. Each fix uncovered the next cause:
   suspend and resume; power (the baselines of #93 and #96 are from `nitian1`);
   `loa-kernel update` downloading `nitian2` by this pin (the canary of the release that
   carries it); the 12 GB tablet, which stays on `nitian1`.
+
+### 2026-11-23: `loa-boot-ok` disarms the dev watchdog (#108)
+
+- `loa-boot-ok.service` now also runs `touch /run/loa-watchdog-disarm` and
+  `rm -f /loa/dev-watchdog`, after `touch /run/loa-boot-ok` and before `sync`. The
+  dev watchdog is armed for one boot (a kernel or boot-chain trial): a boot that
+  reaches `loa-boot-ok` ends it, and the next boot is not armed. No `init_boot`
+  change; `loa-helper watchdog` already stops on the disarm file.
+- The new steps cannot fail the unit: they are `;`-separated and `sync` stays last,
+  so its status is the unit's.
+- Checked on the Mac only: the `ExecStart` body run with `sh -c` and `/loa/`, `/run/`
+  pointed at a scratch directory, with and without a `dev-watchdog` file there
+  (`boot-attempts` seeded with 2): exit 0, `boot-attempts` 0, `loa-boot-ok` and
+  `loa-watchdog-disarm` present, `dev-watchdog` absent.
+- The header comment of `boot/initramfs/init` still says the watchdog waits for
+  `/run/loa-boot-ok`; it waits for `/run/loa-watchdog-disarm` (left as is: `boot/`
+  was out of scope).
+- Not checked: on a tablet (overlay applied, watchdog armed, `watchdog disarmed` in
+  the kernel log, still up after the timeout).
