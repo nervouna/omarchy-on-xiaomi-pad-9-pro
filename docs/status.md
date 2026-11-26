@@ -108,10 +108,6 @@ Each item is tracked in its issue:
 
 Not tracked as an issue:
 
-- Omarchy's Wi-Fi UI expects iwd, which can't run on the stock kernel (no AF_ALG) and
-  has not been tried on `nitian2`, which has it.
-  NetworkManager is used instead; the Omarchy network panel uses
-  NetworkManager directly.
 - Memory: 8 GB model = 7.3 GiB usable. zram (sized to RAM) + earlyoom keep heavy
   Electron/chat app mixes from freezing the tablet; a 12 GB model is the
   real fix.

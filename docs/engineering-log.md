@@ -1946,3 +1946,42 @@ nothing. Each fix uncovered the next cause:
   ever failed it would disable sshd, the recovery path.
 - Cause: specific to this port, not upstream.
 
+### 2026-11-27: iwd tried on `nitian2`; NetworkManager stays, as upstream (#124)
+- Omarchy 4.5 itself runs on NetworkManager: `install/hardware/network.sh` disables
+  `iwd.service`, migration `1782002156` retires networkd and iwd, the `omarchy` package
+  depends on `networkmanager`, and the network panel and the `omarchy-network-*` scripts
+  talk to NetworkManager. The older notes here and in the README ("Omarchy's Wi-Fi UI
+  expects iwd") described Omarchy before 4.x. So this port's Wi-Fi stack is upstream's,
+  not a limit; #124 is closed as not planned.
+- Trial on the 8 GB tablet, nothing persistent: iwd 3.12 starts on `nitian2` with no
+  missing kernel feature, scans and connects (address, route and DNS 6.5 s after the
+  daemon started). Link 802.11ax 2401.9 Mbit/s against 802.11be 2882.3 Mbit/s under
+  NetworkManager on the same access point; a 5-minute download averaged 68.1 MB/s
+  against 83.0 MB/s (the second half of the iwd run was slower; cause not determined).
+- `iwctl device ... set-property Powered off/on` reconnects in 5.1 s. **`iwctl adapter
+  ... Powered off/on` crashed the Wi-Fi firmware** during the reconnect
+  (`cmnos_assert.c:411`, recovery disabled), the kernel panicked and the tablet
+  rebooted. It came back healthy on NetworkManager. Do not power-cycle the phy from
+  userspace on this driver.
+- Starting `iwctl` activates iwd through D-Bus even when the unit is disabled; stopping
+  it again leaves `wlan0` administratively down while NetworkManager still reports
+  connected. `nmcli radio wifi off; nmcli radio wifi on` brings it back.
+- The AF_ALG options in `nitian2` stay: they changed no CRC and other software uses them.
+- Not checked: s2idle and roaming under iwd, NetworkManager with the iwd backend.
+
+### 2026-11-27: update `20261127-1` canaried on the 8 GB tablet, from a file
+- Pre-release `update-20261127-1` (commit `627d857`: #113 to #116, #119, #125 over
+  `20261118-1`; same kernel pin, `nitian2`). Not promoted: it changes the pin against
+  Latest (`20261116-1`), which is the owner's call.
+- The tablet could not reach GitHub (its proxy's outbound failed after the reboot above;
+  domestic sites worked), so the bundle was downloaded on the Mac, its sha256 compared
+  with the release notes (`9d0fe7c3…`), copied over USB with its signature and applied
+  with `loa-update --file`. The signature check is the same; the download path was not
+  exercised, and neither was `loa-update check --tag` (step 5 of the canary).
+- Trial boot: marker `tried` at boot, `/run/loa-boot-ok` present, marker gone 12 minutes
+  later, system `running`, no failed units, Hyprland up, Wi-Fi connected,
+  `PasswordAuthentication no`, kernel as pinned.
+- `pkill -STOP hypridle` right after a boot (to keep the USB link) left Omarchy's
+  screensaver terminal at 75 % of a core until hypridle was resumed: the same cause as
+  the hot days of 2026-11-17 and 18 (#23). Resume it before leaving the tablet.
+- Not checked: touch, pen, sound, the cover (owner's checklist).
