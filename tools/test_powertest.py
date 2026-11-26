@@ -322,6 +322,8 @@ for line in sys.stdin:
         send({"type": "turn_end", "message": {}, "toolResults": []})
         send({"type": "agent_settled", "aborted": False})
     elif t == "new_session":
+        if mode == "mute":
+            continue
         msgs = 0
         send({"id": i, "type": "response", "command": "new_session", "success": True, "data": {"cancelled": False}})
     elif t == "get_state":
@@ -362,7 +364,7 @@ class PiSession(unittest.TestCase):
         res = {"runs": [], "failed": False}
         T.session_loop(lambda: T.PiRpc([T.sys.executable, fake], d, env, os.path.join(d, "pi.stderr")),
                        "PROMPT", time.time() + seconds, "fake-model", res, lambda: None,
-                       reload=lambda: 0, reset=lambda: resets.append(1), margin=0)
+                       reload=lambda: 0, reset=lambda: resets.append(1), margin=0, ns_timeout=0.3)
         return res, open(starts).read().split(), resets
 
     def test_one_process_many_tasks(self):
@@ -386,6 +388,12 @@ class PiSession(unittest.TestCase):
         self.assertTrue(res["failed"])
         self.assertEqual(len(res["runs"]), 1)
         self.assertEqual(len(pids), 1)
+
+    def test_unanswered_new_session_fails_the_block(self):
+        res, _, resets = self.loop("mute", seconds=2)
+        self.assertTrue(res["failed"])
+        self.assertTrue(res["new_session_failed"]["no_answer"])
+        self.assertEqual((len(res["runs"]), len(resets)), (1, 1))
 
     def test_503_on_stderr_fails_the_block(self):
         res, _, _ = self.loop("503", seconds=0.8)

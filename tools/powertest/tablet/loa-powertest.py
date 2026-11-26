@@ -770,8 +770,9 @@ class PiRpc:
 
     def stderr_503(self):
         """Whether Pi's stderr since the last call mentions a 503; also its length."""
-        self.err.seek(self.err_seen)
-        new = self.err.read()
+        with open(self.errpath, "rb") as f:  # Pi's own descriptor keeps its offset
+            f.seek(self.err_seen)
+            new = f.read()
         self.err_seen += len(new)
         return b" 503" in new, len(new)
 
@@ -809,14 +810,17 @@ class PiRpc:
         st["seconds"] = round(time.time() - t0, 1)
         return st
 
-    def new_session(self, deadline, model):
-        """A fresh, empty conversation in the same process, checked with get_state."""
-        r = self.command({"type": "new_session"}, deadline) or {}
-        ok = bool(r.get("success")) and not (r.get("data") or {}).get("cancelled")
-        s = (self.command({"type": "get_state"}, deadline) or {}).get("data") or {}
-        return {"ok": ok and s.get("messageCount") == 0 and (s.get("model") or {}).get("id") == model,
-                "new_session": ok, "message_count": s.get("messageCount"),
-                "model_kept": (s.get("model") or {}).get("id") == model}
+    def new_session(self, deadline, model, timeout=10):
+        """A fresh, empty conversation in the same process, checked with get_state.
+        Each command gets `timeout` seconds; "cut" is a miss at the block's deadline."""
+        r = self.command({"type": "new_session"}, min(deadline, time.time() + timeout))
+        s = r and self.command({"type": "get_state"}, min(deadline, time.time() + timeout))
+        ok = bool(r and r.get("success")) and not (r.get("data") or {}).get("cancelled")
+        data = (s or {}).get("data") or {}
+        kept = (data.get("model") or {}).get("id") == model
+        return {"ok": ok and data.get("messageCount") == 0 and kept, "new_session": ok,
+                "message_count": data.get("messageCount"), "model_kept": kept,
+                "no_answer": not (r and s), "cut": not (r and s) and time.time() >= deadline}
 
     def close(self):
         """Close stdin (Pi's orderly shutdown) and SIGTERM; SIGKILL after 5 s."""
@@ -838,7 +842,7 @@ class PiRpc:
         return rc
 
 
-def session_loop(start, prompt, until, model, res, save, reload, reset, margin=20):
+def session_loop(start, prompt, until, model, res, save, reload, reset, margin=20, ns_timeout=10):
     """agent-session: one Pi for the whole block, a new conversation and a project reset
     between tasks (the context stays that of one task), ended at the block's deadline."""
     pi = start()
@@ -857,8 +861,8 @@ def session_loop(start, prompt, until, model, res, save, reload, reset, margin=2
             if time.time() >= until - margin:
                 break
             reset()
-            ns = pi.new_session(until, model)
-            if not ns["ok"] and time.time() > until:
+            ns = pi.new_session(until, model, ns_timeout)
+            if ns["cut"]:
                 break  # cut by the block's end, not a failure
             res["new_sessions"] += 1
             if not ns["ok"]:
