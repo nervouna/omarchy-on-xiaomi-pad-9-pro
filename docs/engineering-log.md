@@ -1933,3 +1933,16 @@ nothing. Each fix uncovered the next cause:
 - `icnss2: Recursive recovery allowed for WLAN` at probe is a setting, not a recovery:
   it is in every boot's log, with or without the keys.
 - Left for later in #103: `rdbg`, the charger and fuel-gauge status lines.
+
+### 2026-11-27: sshd takes keys only (#117)
+- The port enables sshd itself and skips Omarchy's migration `1788124236`, which is
+  the one that would harden it. With the `omarchy` user's password set (for sudo),
+  SSH accepted it over Wi-Fi.
+- Shipped `/etc/ssh/sshd_config.d/10-loa.conf`: `PasswordAuthentication no` and
+  `KbdInteractiveAuthentication no`. sshd reads it at start, so a fresh image and a
+  `loa-update` trial boot have it. `tools/overlay-install.sh` reloads a running sshd
+  only after `sshd -t` passes; on failure it prints a line and leaves sshd running.
+- The migration stays on the skip list (its reason now says so): if its name match
+  ever failed it would disable sshd, the recovery path.
+- Cause: specific to this port, not upstream.
+
