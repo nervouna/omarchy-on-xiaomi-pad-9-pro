@@ -301,6 +301,9 @@ FAKE_PI = r'''
 import json, os, sys
 open(os.environ["FAKE_STARTS"], "a").write("%d\n" % os.getpid())
 mode = os.environ.get("FAKE_MODE", "")
+if mode == "exit_idle":
+    import threading
+    threading.Timer(0.3, lambda: os._exit(3)).start()
 msgs = 0
 def send(r):
     sys.stdout.write(json.dumps(r) + "\n"); sys.stdout.flush()
@@ -353,7 +356,7 @@ class PiEvents(unittest.TestCase):
 class PiSession(unittest.TestCase):
     """One fake Pi in RPC mode for a short block: one start, a new session after each task."""
 
-    def loop(self, mode="", seconds=1.5):
+    def loop(self, mode="", seconds=1.5, margin=0):
         d = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, d)
         fake = os.path.join(d, "fake-pi.py")
@@ -364,7 +367,7 @@ class PiSession(unittest.TestCase):
         res = {"runs": [], "failed": False}
         T.session_loop(lambda: T.PiRpc([T.sys.executable, fake], d, env, os.path.join(d, "pi.stderr")),
                        "PROMPT", time.time() + seconds, "fake-model", res, lambda: None,
-                       reload=lambda: 0, reset=lambda: resets.append(1), margin=0, ns_timeout=0.3)
+                       reload=lambda: 0, reset=lambda: resets.append(1), margin=margin, ns_timeout=0.3)
         return res, open(starts).read().split(), resets
 
     def test_one_process_many_tasks(self):
@@ -400,6 +403,15 @@ class PiSession(unittest.TestCase):
         self.assertTrue(res["failed"])
         self.assertTrue(res["runs"][0]["http_503"])
         self.assertEqual(len(res["runs"]), 1)
+
+    def test_pi_exiting_while_idle_fails_the_block(self):
+        # No task fits (the margin is the whole block), so Pi only idles, and dies at 0.3 s.
+        t0 = time.time()
+        res, pids, _ = self.loop("exit_idle", seconds=1.5, margin=1.5)
+        self.assertLess(time.time() - t0, 1.2)
+        self.assertTrue(res["failed"])
+        self.assertTrue(res["exited_early"])
+        self.assertEqual((res["runs"], res["pi_rc"], len(pids)), ([], 3, 1))
 
 
 if __name__ == "__main__":

@@ -873,6 +873,10 @@ def session_loop(start, prompt, until, model, res, save, reload, reset, margin=2
         # Pi stays up, idle, until the block's deadline.
         while time.time() < until and pi.p.poll() is None:
             time.sleep(min(1, max(0.05, until - time.time())))
+        if pi.p.poll() is not None and time.time() < until and not res["failed"]:
+            # Pi died while idle: the rest of the block was measured without the process.
+            res["failed"] = True
+            res["exited_early"] = True
     finally:
         res["pi_rc"] = pi.close()
         save()
