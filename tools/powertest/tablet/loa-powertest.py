@@ -13,7 +13,8 @@
     loa-powertest.py conditions | warmup | end
     loa-powertest.py hold --id N              the runner's session: EOF on stdin ends the run
     loa-powertest.py watchdog                 (started by `begin` as a transient unit)
-    loa-powertest.py agent-loop ...           (started by `block start agent`)
+    loa-powertest.py agent-loop ...           (started by `block start agent`; with --session
+                                              by `block start agent-session`)
 
 Everything a run changes is undone by `end`. The same restore runs at once when
 the runner's `hold` session reads end of file (the runner on the Mac was killed:
@@ -530,7 +531,7 @@ def cmd_block(a):
             die("no run is active")
         if not all(unit_active(u) for u in ("vite", "chromium", "term")):
             die("services are not running")
-        # Same start state for every repeat: replay and agent begin from the pristine project.
+        # Same start state for every repeat: replay and the agents begin from the pristine project.
         reset_project()
         rc, msg = cdp("reload", timeout=40)
         if rc != 0:
@@ -547,9 +548,10 @@ def cmd_block(a):
                             "--edits", f"{SRC}/edits.json", "--period", str(a.period),
                             "--step", a.step, "--work", WORK,
                             "--until", str(until), "--out", f"{WORK}/driver.json"])
-        elif a.workload == "agent":
+        elif a.workload in ("agent", "agent-session"):
             unit("driver", [sys.executable, os.path.abspath(__file__), "agent-loop", "--until", str(until),
-                            "--out", f"{WORK}/driver.json"], user=False)
+                            "--out", f"{WORK}/driver.json"] + (["--session"] if a.workload == "agent-session" else []),
+                 user=False)
         out({"ok": True, **start})
         return
     # stop
@@ -607,13 +609,54 @@ def pi_config():
     return e
 
 
+def new_counts():
+    return {"turns": 0, "tool_calls": 0, "tool_errors": 0, "input_tokens": 0, "output_tokens": 0,
+            "retries": 0, "errors": 0, "http_503": False, "finished": False, "rc": None}
+
+
+def count_event(st, ev):
+    """Add one of Pi's session events (the same shapes in JSON and RPC mode) to the counts."""
+    t = ev.get("type")
+    if t == "turn_end":
+        st["turns"] += 1
+    elif t == "tool_execution_end":
+        st["tool_calls"] += 1
+        st["tool_errors"] += bool(ev.get("isError"))
+    elif t == "auto_retry_start":
+        st["retries"] += 1
+        st["http_503"] |= "503" in str(ev.get("errorMessage", ""))
+    elif t == "message_end" and (ev.get("message") or {}).get("role") == "assistant":
+        m = ev["message"]
+        u = m.get("usage") or {}
+        st["input_tokens"] += u.get("input", 0) or 0
+        st["output_tokens"] += u.get("output", 0) or 0
+        if m.get("stopReason") == "error":
+            st["errors"] += 1
+            st["http_503"] |= "503" in str(m.get("errorMessage", ""))
+    elif t == "agent_settled":
+        st["finished"] = not ev.get("aborted")
+
+
+def task_failed(st):
+    """An endpoint error, a retry or a Pi that failed makes the repeat invalid."""
+    return bool(st["http_503"] or st["errors"] or st["retries"]
+                or (st["rc"] not in (0, None) and not st.get("cut_at_deadline")))
+
+
+def pi_env(e):
+    return dict(USER_ENV, PI_CODING_AGENT_DIR=PIDIR, PI_OFFLINE="1", LLM_API_KEY=e["LLM_API_KEY"])
+
+
+def pi_argv(e, mode):
+    return ["setpriv", "--reuid=1000", "--regid=1000", "--init-groups", PI, "--mode", mode, "--no-session",
+            "--provider", "loa", "--model", e["LLM_MODEL"], "--no-approve"]
+
+
 def run_pi(prompt, deadline, e):
     """One Pi run in the project; returns counts only (never Pi's text)."""
-    env = dict(USER_ENV, PI_CODING_AGENT_DIR=PIDIR, PI_OFFLINE="1", LLM_API_KEY=e["LLM_API_KEY"])
-    argv = ["setpriv", "--reuid=1000", "--regid=1000", "--init-groups", PI, "--mode", "json", "--no-session",
-            "--provider", "loa", "--model", e["LLM_MODEL"], "--no-approve", prompt]
-    st = {"turns": 0, "tool_calls": 0, "tool_errors": 0, "input_tokens": 0, "output_tokens": 0,
-          "retries": 0, "errors": 0, "http_503": False, "finished": False, "rc": None}
+    env = pi_env(e)
+    argv = pi_argv(e, "json") + [prompt]
+    st = new_counts()
     t0 = time.time()
     errf = open(f"{RUN}/pi.stderr", "w+b")
     p = subprocess.Popen(argv, cwd=PROJECT, env=env, stdout=subprocess.PIPE, stderr=errf,
@@ -641,25 +684,7 @@ def run_pi(prompt, deadline, e):
                     ev = json.loads(line)
                 except ValueError:
                     continue
-                t = ev.get("type")
-                if t == "turn_end":
-                    st["turns"] += 1
-                elif t == "tool_execution_end":
-                    st["tool_calls"] += 1
-                    st["tool_errors"] += bool(ev.get("isError"))
-                elif t == "auto_retry_start":
-                    st["retries"] += 1
-                    st["http_503"] |= "503" in str(ev.get("errorMessage", ""))
-                elif t == "message_end" and (ev.get("message") or {}).get("role") == "assistant":
-                    m = ev["message"]
-                    u = m.get("usage") or {}
-                    st["input_tokens"] += u.get("input", 0) or 0
-                    st["output_tokens"] += u.get("output", 0) or 0
-                    if m.get("stopReason") == "error":
-                        st["errors"] += 1
-                        st["http_503"] |= "503" in str(m.get("errorMessage", ""))
-                elif t == "agent_settled":
-                    st["finished"] = not ev.get("aborted")
+                count_event(st, ev)
         if p.poll() is not None and not chunk:
             break
         if not chunk:
@@ -675,6 +700,188 @@ def run_pi(prompt, deadline, e):
     return st
 
 
+class PiRpc:
+    """One long-lived Pi in RPC mode (docs/rpc.md and docs/rpc-commands.md in Pi's package):
+    JSONL commands on stdin, responses and the same session events as JSON mode on
+    stdout. Only counts are kept, never Pi's text."""
+
+    DIALOGS = ("select", "confirm", "input", "editor")  # extension UI that waits for a reply
+
+    def __init__(self, argv, cwd, env, errpath):
+        self.errpath = errpath
+        self.err = open(errpath, "w+b")
+        self.err_seen = 0
+        self.p = subprocess.Popen(argv, cwd=cwd, env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                  stderr=self.err, start_new_session=True)
+        os.set_blocking(self.p.stdout.fileno(), False)
+        self.buf = b""
+        self.pending = []
+        self.n = 0
+
+    def send(self, cmd):
+        self.n += 1
+        cid = f"{cmd['type']}-{self.n}"
+        try:
+            self.p.stdin.write(json.dumps(dict(cmd, id=cid)).encode() + b"\n")
+            self.p.stdin.flush()
+        except OSError:
+            pass  # Pi is gone; the reader sees it exit
+        return cid
+
+    def wait(self, done, deadline):
+        """Read records until done(record) is true: "done", "deadline" or "exited"."""
+        while True:
+            while self.pending:
+                if done(self.pending.pop(0)):
+                    return "done"
+            if time.time() > deadline:
+                return "deadline"
+            try:
+                chunk = self.p.stdout.read()
+            except BlockingIOError:
+                chunk = None
+            if chunk:
+                self.buf += chunk
+                *lines, self.buf = self.buf.split(b"\n")
+                for line in lines:
+                    try:
+                        rec = json.loads(line)
+                    except ValueError:
+                        continue
+                    if isinstance(rec, dict):
+                        self.pending.append(rec)
+                continue
+            if self.p.poll() is not None:
+                return "exited"
+            time.sleep(0.1)
+
+    def command(self, cmd, deadline):
+        """Send one command; its response, or None (deadline or Pi exited)."""
+        cid = self.send(cmd)
+        got = {}
+
+        def done(r):
+            if r.get("type") == "response" and r.get("id") == cid:
+                got["r"] = r
+                return True
+            return False
+        self.wait(done, deadline)
+        return got.get("r")
+
+    def stderr_503(self):
+        """Whether Pi's stderr since the last call mentions a 503; also its length."""
+        with open(self.errpath, "rb") as f:  # Pi's own descriptor keeps its offset
+            f.seek(self.err_seen)
+            new = f.read()
+        self.err_seen += len(new)
+        return b" 503" in new, len(new)
+
+    def task(self, prompt, deadline):
+        """Give Pi the prompt and read until it settles."""
+        st = new_counts()
+        t0 = time.time()
+        cid = self.send({"type": "prompt", "message": prompt})
+
+        def done(r):
+            t = r.get("type")
+            if t == "response":
+                if r.get("id") == cid and not (r.get("success")
+                                               and (r.get("data") or {}).get("disposition") == "started"):
+                    st["errors"] += 1
+                    st["rejected"] = True
+                    return True
+                return False
+            if t == "extension_ui_request" and r.get("method") in self.DIALOGS:
+                st["errors"] += 1
+                st["ui_request"] = True
+                return True
+            count_event(st, r)
+            return t == "agent_settled"
+        how = self.wait(done, deadline)
+        if how == "deadline":
+            st["cut_at_deadline"] = True
+        elif how == "exited":
+            st["rc"] = self.p.returncode
+            st["errors"] += 1
+            st["exited"] = True
+        e503, n = self.stderr_503()
+        st["http_503"] |= e503
+        st["stderr_bytes"] = n
+        st["seconds"] = round(time.time() - t0, 1)
+        return st
+
+    def new_session(self, deadline, model, timeout=10):
+        """A fresh, empty conversation in the same process, checked with get_state.
+        Each command gets `timeout` seconds; "cut" is a miss at the block's deadline."""
+        r = self.command({"type": "new_session"}, min(deadline, time.time() + timeout))
+        s = r and self.command({"type": "get_state"}, min(deadline, time.time() + timeout))
+        ok = bool(r and r.get("success")) and not (r.get("data") or {}).get("cancelled")
+        data = (s or {}).get("data") or {}
+        kept = (data.get("model") or {}).get("id") == model
+        return {"ok": ok and data.get("messageCount") == 0 and kept, "new_session": ok,
+                "message_count": data.get("messageCount"), "model_kept": kept,
+                "no_answer": not (r and s), "cut": not (r and s) and time.time() >= deadline}
+
+    def close(self):
+        """Close stdin (Pi's orderly shutdown) and SIGTERM; SIGKILL after 5 s."""
+        try:
+            self.p.stdin.close()
+        except OSError:
+            pass
+        try:
+            os.killpg(self.p.pid, signal.SIGTERM)
+            self.p.wait(5)
+        except (OSError, subprocess.TimeoutExpired):
+            try:
+                os.killpg(self.p.pid, signal.SIGKILL)
+            except OSError:
+                pass
+        rc = self.p.wait()
+        self.err.close()
+        os.unlink(self.errpath)
+        return rc
+
+
+def session_loop(start, prompt, until, model, res, save, reload, reset, margin=20, ns_timeout=10):
+    """agent-session: one Pi for the whole block, a new conversation and a project reset
+    between tasks (the context stays that of one task), ended at the block's deadline."""
+    pi = start()
+    res["process_starts"] = res.get("process_starts", 0) + 1
+    res["new_sessions"] = 0
+    try:
+        while time.time() < until - margin:
+            st = pi.task(prompt, until)
+            if not st.get("cut_at_deadline"):
+                st["reload_rc"] = reload()  # look at the result, as a person would
+            res["runs"].append(st)
+            if task_failed(st):
+                res["failed"] = True
+                break  # a failed repeat: the runner discards and reruns it
+            save()
+            if time.time() >= until - margin:
+                break
+            reset()
+            ns = pi.new_session(until, model, ns_timeout)
+            if ns["cut"]:
+                break  # cut by the block's end, not a failure
+            res["new_sessions"] += 1
+            if not ns["ok"]:
+                res["failed"] = True
+                res["new_session_failed"] = ns
+                break
+        save()
+        # Pi stays up, idle, until the block's deadline.
+        while time.time() < until and pi.p.poll() is None:
+            time.sleep(min(1, max(0.05, until - time.time())))
+        if pi.p.poll() is not None and time.time() < until and not res["failed"]:
+            # Pi died while idle: the rest of the block was measured without the process.
+            res["failed"] = True
+            res["exited_early"] = True
+    finally:
+        res["pi_rc"] = pi.close()
+        save()
+
+
 def cmd_agent_loop(a):
     e = pi_config()
     prompt = rd(f"{SRC}/prompt.txt")
@@ -685,13 +892,18 @@ def cmd_agent_loop(a):
         os.replace(a.out + ".tmp", a.out)
 
     signal.signal(signal.SIGTERM, lambda *_: (save(), sys.exit(0)))
+    if a.session:
+        session_loop(lambda: PiRpc(pi_argv(e, "rpc"), PROJECT, pi_env(e), f"{RUN}/pi.stderr"),
+                     prompt, a.until, e["LLM_MODEL"], res, save,
+                     reload=lambda: cdp("reload", timeout=40)[0], reset=reset_project)
+        return
     while time.time() < a.until - 20:
         st = run_pi(prompt, a.until, e)
         if not st.get("cut_at_deadline"):
             rc, _ = cdp("reload", timeout=40)  # look at the result, as a person would
             st["reload_rc"] = rc
         res["runs"].append(st)
-        if st["http_503"] or st["errors"] or st["retries"] or (st["rc"] not in (0, None) and not st.get("cut_at_deadline")):
+        if task_failed(st):
             res["failed"] = True
             save()
             break  # a failed repeat: the runner discards and reruns it
@@ -738,7 +950,7 @@ def main():
     s.add_argument("what", choices=("start", "stop"))
     k = sub.add_parser("block")
     k.add_argument("what", choices=("start", "stop"))
-    k.add_argument("workload", nargs="?", choices=("idle", "replay", "agent"))
+    k.add_argument("workload", nargs="?", choices=("idle", "replay", "agent", "agent-session"))
     k.add_argument("--seconds", type=float, default=600)
     k.add_argument("--tag", required=True)
     k.add_argument("--interval", type=float, default=10)
@@ -757,6 +969,7 @@ def main():
     g = sub.add_parser("agent-loop")
     g.add_argument("--until", type=float, required=True)
     g.add_argument("--out", required=True)
+    g.add_argument("--session", action="store_true", help="agent-session: one Pi in RPC mode for the block")
     a = p.parse_args()
     {"begin": cmd_begin, "hb": cmd_hb, "input": cmd_input, "display": cmd_display, "backlight": cmd_backlight, "services": cmd_services,
      "block": cmd_block, "conditions": cmd_conditions, "warmup": cmd_warmup, "end": cmd_end,
