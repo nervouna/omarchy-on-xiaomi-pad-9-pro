@@ -607,7 +607,7 @@ leads with it. In daytime, compare on the default `replay`, which was chosen to
 draw about what the agent draws (candidates below). A run in daytime is
 `--workloads replay,idle`; the agent blocks would be skipped anyway.
 
-**Workloads** (all three have the same services running: the Vite dev server of
+**Workloads** (all have the same services running: the Vite dev server of
 the fixed project in `tools/powertest/project`, a test Chromium on its page and a
 terminal, all under `/opt/loa-powertest`, nothing in the user's home):
 
@@ -623,6 +623,12 @@ terminal, all under `/opt/loa-powertest`, nothing in the user's home):
   `/root/.config/loa-powertest/llm.env` on the tablet (mode 600) and nowhere else;
   Pi's `models.json` is written to `/run/loa-powertest/pi-agent` for the block and
   removed after it. No output of Pi leaves the tablet, only counts.
+- `agent-session`: the same tasks, warm-up and rules as `agent`, but one Pi
+  process in its RPC mode stays up for the whole block and gets the prompt again
+  after each project reset, in a new conversation (`new_session`, so the context
+  stays that of one task); the report counts its Pi process starts (1) beside
+  `agent`'s, which starts one Pi per task
+  ([#123](https://github.com/nervouna/omarchy-on-xiaomi-pad-9-pro/issues/123)).
 - `replay` (the daytime stand-in; default `replay+build@4`): every `--period`
   seconds (default 4) the next edit of
   `tools/powertest/edits.json` (forward through the list, then back), wait until the

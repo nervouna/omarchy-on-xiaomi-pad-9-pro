@@ -8,6 +8,7 @@ import json
 import os
 import shutil
 import tempfile
+import time
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -106,6 +107,132 @@ class Workloads(unittest.TestCase):
         self.assertIn("failed", P.block_valid(b))
 
 
+class AgentSessionWorkload(unittest.TestCase):
+    def test_parse(self):
+        self.assertEqual(P.parse_workload("agent-session", 30, "none"), ("agent-session", None, None))
+        for bad in ("agent-session@10", "agent-session+build", "agent-sessions"):
+            with self.assertRaises(ValueError):
+                P.parse_workload(bad, 30, "none")
+
+    def test_order(self):
+        self.assertEqual(P.ordered(["idle", "agent-session", "replay", "agent"]),
+                         ["agent", "agent-session", "idle", "replay"])
+
+    def test_invalid_like_agent(self):
+        for wl in ("agent", "agent-session"):
+            self.assertIn("endpoint error", P.block_valid(block(wl, 1, 5.0, {"runs": [], "failed": False})))
+            self.assertIn("endpoint error", P.block_valid(block(wl, 1, 5.0, {"runs": [{}], "failed": True})))
+            self.assertIsNone(P.block_valid(block(wl, 1, 5.0, {"runs": [{}], "failed": False})))
+
+
+def task(**kw):
+    t = {"finished": True, "turns": 4, "tool_calls": 5, "tool_errors": 0, "input_tokens": 1000,
+         "output_tokens": 300, "retries": 0, "errors": 0, "http_503": False}
+    t.update(kw)
+    return t
+
+
+class ReportBothAgents(unittest.TestCase):
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.dir)
+
+    def test_side_by_side(self):
+        agent = {"runs": [task(), task(), task(finished=False, tool_errors=1)], "failed": False}
+        sess = {"runs": [task(), task()], "failed": False, "process_starts": 1}
+        meta = run_json(["idle", "agent-session", "agent"],
+                        [block("idle", 1, 4.6), block("agent", 1, 5.6, agent), block("agent-session", 1, 5.4, sess),
+                         block("agent", 2, 5.8, agent), block("agent-session", 2, 5.5, sess)])
+        json.dump(meta, open(os.path.join(self.dir, "run.json"), "w"))
+        text = P.report(self.dir)
+        rj = json.load(open(os.path.join(self.dir, "report.json")))
+        rows = [x.split("|")[1].strip() for x in text.split("## Result")[1].split("## Blocks")[0].splitlines()
+                if x.startswith("| ") and not x.startswith("| Workload")]
+        self.assertEqual(rows, ["agent", "agent-session", "idle"])
+        self.assertIn("| agent-session | 2 | 5.45 |", text)
+        self.assertIn("agent-session minus agent: -0.25 W", text)
+        line = [x for x in text.splitlines() if x.startswith("| 3 | agent-session |")][0]
+        self.assertIn("2 tasks (2 finished)", line)
+        self.assertIn("1 Pi start", line)
+        line = [x for x in text.splitlines() if x.startswith("| 2 | agent |")][0]
+        self.assertIn("3 tasks (2 finished)", line)
+        self.assertIn("3 Pi starts", line)
+        self.assertIn("1 tool errors", line)
+        c = rj["blocks"][2]["counts"]
+        self.assertEqual(c, {"tasks": 2, "finished": 2, "turns": 8, "tool_calls": 10, "tool_errors": 0,
+                             "input_tokens": 2000, "output_tokens": 600, "retries": 0, "errors": 0,
+                             "http_503": False, "process_starts": 1})
+        self.assertEqual(rj["blocks"][1]["counts"]["process_starts"], 3)
+        self.assertNotIn("counts", rj["blocks"][0])
+
+    def test_old_runs_without_new_counts(self):
+        # A run recorded before tool errors and retries were counted still reports.
+        agent = {"runs": [{"finished": True, "turns": 7, "tool_calls": 10, "input_tokens": 1000,
+                           "output_tokens": 700}], "failed": False}
+        json.dump(run_json(["agent"], [block("agent", 1, 5.6, agent)]), open(os.path.join(self.dir, "run.json"), "w"))
+        self.assertIn("1 tasks (1 finished)", P.report(self.dir))
+
+
+class NightRule(unittest.TestCase):
+    """The 00:00-08:00 rule holds for agent and agent-session alike."""
+
+    def run_with(self, workloads, in_window):
+        out = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, out)
+        calls = []
+
+        def ctl(args, timeout=180, check=True):
+            calls.append(args.split()[0])
+            if args.startswith("begin"):
+                return {"logdir": "/x", "conditions": {}}
+            if args.startswith("warmup"):
+                return {"http": "200", "seconds": 1}
+            return {}
+
+        class Idle:
+            def __init__(self):
+                self.stop = P.threading.Event()
+                self.quiet = P.threading.Event()
+                self.last = {}
+
+            def start(self):
+                pass
+
+            def is_alive(self):
+                return False
+
+        names = ("ctl", "preflight", "push", "report", "log", "sys", "Holder", "Heartbeat", "in_window",
+                 "wait_charge", "run_block")
+        saved = {n: getattr(P, n) for n in names}
+        fake_sys = type("S", (), {"platform": "linux", "exit": staticmethod(SystemExit)})
+        P.ctl, P.preflight, P.push = ctl, lambda: {"hostname": "tablet"}, lambda: None
+        P.report, P.log, P.sys, P.Holder, P.Heartbeat = lambda d: "report", lambda m: None, fake_sys, Idle, Idle
+        P.in_window, P.wait_charge = in_window, lambda a, hb, state: 80
+        P.run_block = lambda *x: self.fail("a block ran")
+        try:
+            a = P.argparse.Namespace(
+                window="70-90", workloads=workloads, period=4, replay_step="none", out=out, seconds=600, settle=30,
+                repeats=1, max_attempts=1, backlight=820, heartbeat_timeout=300, agent_anytime=False)
+            P.cmd_run(a)
+        finally:
+            for n, v in saved.items():
+                setattr(P, n, v)
+        return json.load(open(os.path.join(out, "run.json"))), calls
+
+    def test_outside_window_skips_both(self):
+        for wls in ("agent-session", "agent,agent-session"):
+            meta, calls = self.run_with(wls, lambda start, seconds: False)
+            self.assertEqual([b["skipped"] for b in meta["blocks"]],
+                             ["skipped: endpoint not usable"] * len(wls.split(",")))
+            self.assertNotIn("warmup", calls)
+            self.assertTrue(any("outside the endpoint's window" in n for n in meta["notes"]))
+
+    def test_block_ending_after_window_skips_both(self):
+        meta, calls = self.run_with("agent,agent-session", lambda start, seconds: seconds == 0)
+        self.assertEqual([b["skipped"] for b in meta["blocks"]], ["skipped: would end outside 00:00-08:00"] * 2)
+        self.assertIn("warmup", calls)
+
+
 class RunBeginFails(unittest.TestCase):
     def test_failed_begin_keeps_the_run_record(self):
         out = tempfile.mkdtemp()
@@ -151,6 +278,120 @@ class Meminfo(unittest.TestCase):
         src = open(os.path.join(HERE, "powertest", "tablet", "loa-powertest.py")).read()
         self.assertIn("tools/powertest/powertest.py setup", src)
         self.assertNotIn("setup.sh first", src)
+
+
+# A synthetic Pi event stream in the shape of Pi's docs/json.md (shared by JSON and RPC mode).
+STREAM = [
+    {"type": "agent_start"}, {"type": "turn_start"},
+    {"type": "message_end", "message": {"role": "user", "content": "x"}},
+    {"type": "message_end", "message": {"role": "assistant", "stopReason": "toolUse",
+                                        "usage": {"input": 900, "output": 40}}},
+    {"type": "tool_execution_end", "toolCallId": "c1", "toolName": "edit", "isError": False},
+    {"type": "tool_execution_end", "toolCallId": "c2", "toolName": "bash", "isError": True},
+    {"type": "turn_end", "message": {"role": "assistant"}, "toolResults": []},
+    {"type": "auto_retry_start", "attempt": 1, "maxAttempts": 3, "errorMessage": "503 Service Unavailable"},
+    {"type": "message_end", "message": {"role": "assistant", "stopReason": "stop",
+                                        "usage": {"input": 1100, "output": 10}}},
+    {"type": "turn_end", "message": {"role": "assistant"}, "toolResults": []},
+    {"type": "agent_end", "messages": [], "willRetry": False},
+    {"type": "agent_settled", "aborted": False},
+]
+
+FAKE_PI = r'''
+import json, os, sys
+open(os.environ["FAKE_STARTS"], "a").write("%d\n" % os.getpid())
+mode = os.environ.get("FAKE_MODE", "")
+msgs = 0
+def send(r):
+    sys.stdout.write(json.dumps(r) + "\n"); sys.stdout.flush()
+for line in sys.stdin:
+    c = json.loads(line)
+    t, i = c["type"], c.get("id")
+    if t == "prompt":
+        if mode == "reject":
+            send({"id": i, "type": "response", "command": "prompt", "success": False, "error": "no"})
+            continue
+        send({"id": i, "type": "response", "command": "prompt", "success": True, "data": {"disposition": "started"}})
+        msgs += 2
+        if mode == "503":
+            sys.stderr.write("HTTP 503 Service Unavailable\n"); sys.stderr.flush()
+        send({"type": "agent_start"})
+        send({"type": "message_end", "message": {"role": "assistant", "stopReason": "toolUse",
+                                                 "usage": {"input": 100, "output": 20}}})
+        send({"type": "tool_execution_end", "toolCallId": "c", "toolName": "edit", "isError": False})
+        send({"type": "turn_end", "message": {}, "toolResults": []})
+        send({"type": "agent_settled", "aborted": False})
+    elif t == "new_session":
+        msgs = 0
+        send({"id": i, "type": "response", "command": "new_session", "success": True, "data": {"cancelled": False}})
+    elif t == "get_state":
+        send({"id": i, "type": "response", "command": "get_state", "success": True,
+              "data": {"model": {"id": "fake-model"}, "messageCount": msgs, "isStreaming": False}})
+'''
+
+
+class PiEvents(unittest.TestCase):
+    def test_count_events(self):
+        st = T.new_counts()
+        for ev in STREAM:
+            T.count_event(st, ev)
+        self.assertEqual((st["turns"], st["tool_calls"], st["tool_errors"]), (2, 2, 1))
+        self.assertEqual((st["input_tokens"], st["output_tokens"]), (2000, 50))
+        self.assertEqual((st["retries"], st["http_503"], st["finished"]), (1, True, True))
+        self.assertTrue(T.task_failed(st))
+
+    def test_clean_task_is_not_failed(self):
+        st = T.new_counts()
+        for ev in STREAM:
+            if ev["type"] != "auto_retry_start":
+                T.count_event(st, ev)
+        self.assertFalse(T.task_failed(st))
+
+
+class PiSession(unittest.TestCase):
+    """One fake Pi in RPC mode for a short block: one start, a new session after each task."""
+
+    def loop(self, mode="", seconds=1.5):
+        d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, d)
+        fake = os.path.join(d, "fake-pi.py")
+        open(fake, "w").write(FAKE_PI)
+        starts = os.path.join(d, "starts")
+        env = dict(os.environ, FAKE_STARTS=starts, FAKE_MODE=mode)
+        resets = []
+        res = {"runs": [], "failed": False}
+        T.session_loop(lambda: T.PiRpc([T.sys.executable, fake], d, env, os.path.join(d, "pi.stderr")),
+                       "PROMPT", time.time() + seconds, "fake-model", res, lambda: None,
+                       reload=lambda: 0, reset=lambda: resets.append(1), margin=0)
+        return res, open(starts).read().split(), resets
+
+    def test_one_process_many_tasks(self):
+        t0 = time.time()
+        res, pids, resets = self.loop()
+        self.assertGreaterEqual(time.time() - t0, 1.4)  # Pi stays up until the block's deadline
+        self.assertEqual(len(pids), 1)
+        self.assertEqual(res["process_starts"], 1)
+        self.assertFalse(res["failed"])
+        done = [r for r in res["runs"] if r["finished"]]
+        self.assertGreaterEqual(len(done), 2)
+        self.assertEqual(done[0]["turns"], 1)
+        self.assertEqual(done[0]["input_tokens"], 100)
+        # A new conversation after each reset (the last one may be cut by the block's end).
+        self.assertGreaterEqual(res["new_sessions"], len(done) - 1)
+        self.assertIn(len(resets) - res["new_sessions"], (0, 1))
+        self.assertNotIn("new_session_failed", res)
+
+    def test_rejected_prompt_fails_the_block(self):
+        res, pids, _ = self.loop("reject", seconds=0.8)
+        self.assertTrue(res["failed"])
+        self.assertEqual(len(res["runs"]), 1)
+        self.assertEqual(len(pids), 1)
+
+    def test_503_on_stderr_fails_the_block(self):
+        res, _, _ = self.loop("503", seconds=0.8)
+        self.assertTrue(res["failed"])
+        self.assertTrue(res["runs"][0]["http_503"])
+        self.assertEqual(len(res["runs"]), 1)
 
 
 if __name__ == "__main__":

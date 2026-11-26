@@ -8,7 +8,9 @@
 `run` cuts the charger input for each block (the USB data link stays up), so
 system power is the battery's voltage times its current. Workloads:
   agent   Pi Agent on a fixed prompt against the LAN endpoint (the primary number;
-          night only)
+          night only), one Pi process per task
+  agent-session  the same tasks in one Pi process kept alive for the whole block
+          (Pi's RPC mode, a new conversation per task; night only)
   replay  a fixed cycle of source edits with hot reload, a page reload and an optional
           step (a production build or a test run): the daytime stand-in for agent
   idle    screen on at a fixed backlight, terminal and preview page open, nothing running
@@ -18,7 +20,7 @@ takes --replay-step and --period.
 Each repeat starts between --window charge levels; the runner drains or charges
 the battery to get there. A watchdog on the tablet restores everything when this
 runner stops sending heartbeats. The LLM endpoint may be used only between
-00:00 and 08:00 local time: outside that window the agent blocks are skipped
+00:00 and 08:00 local time: outside that window both agents' blocks are skipped
 (--agent-anytime overrides it for a person at the keyboard).
 TSSH=/path/to/tssh overrides tools/tssh (a worktree has no keys/).
 The shebang is the system Python on purpose: macOS hides the network interfaces'
@@ -40,6 +42,7 @@ REPO = os.path.dirname(os.path.dirname(HERE))
 TSSH = os.environ.get("TSSH", os.path.join(REPO, "tools", "tssh"))
 CTL = "python3 /opt/loa-powertest/src/tablet/loa-powertest.py"
 WINDOW_END_H = 8  # the endpoint may be used from 00:00 to 08:00 local time
+AGENTS = ("agent", "agent-session")  # the workloads that use the endpoint
 
 
 def log(msg):
@@ -238,7 +241,7 @@ def block_valid(b):
             return "replay ran no cycles"
         if d.get("failed"):
             return f"replay: {d['failed']} of {d['cycles']} cycles failed"
-    if b["workload"] == "agent":
+    if b["workload"] in AGENTS:
         if d.get("failed") or not d.get("runs"):
             return "agent: endpoint error (503 or other), repeat discarded"
     return None
@@ -248,11 +251,11 @@ STEPS = ("none", "build", "test")
 
 
 def parse_workload(name, period, step):
-    """`idle`, `agent` or `replay[+STEP][@PERIOD]` -> (base, step, period); the
-    defaults come from --replay-step and --period."""
+    """`idle`, `agent`, `agent-session` or `replay[+STEP][@PERIOD]` -> (base, step,
+    period); the defaults come from --replay-step and --period."""
     base, _, per = name.partition("@")
     base, _, st = base.partition("+")
-    if base in ("idle", "agent"):
+    if base in ("idle",) + AGENTS:
         if st or per:
             raise ValueError(f"{name}: only replay takes +STEP or @PERIOD")
         return base, None, None
@@ -271,8 +274,20 @@ def parse_workload(name, period, step):
 
 
 def ordered(workloads):
-    """The report leads with the agent workload, the primary number."""
-    return sorted(workloads, key=lambda w: w != "agent")
+    """The report leads with the agent workload, the primary number, then agent-session."""
+    return sorted(workloads, key=lambda w: (w != "agent", w != "agent-session"))
+
+
+def agent_counts(d):
+    """Per-block counts of an agent workload's driver result (older runs lack some)."""
+    runs = d.get("runs", [])
+    c = {"tasks": len(runs), "finished": sum(bool(x.get("finished")) for x in runs)}
+    for k in ("turns", "tool_calls", "tool_errors", "input_tokens", "output_tokens", "retries", "errors"):
+        c[k] = sum(x.get(k, 0) or 0 for x in runs)
+    c["http_503"] = any(x.get("http_503") for x in runs)
+    # `agent` starts one Pi per task; agent-session records its own starts.
+    c["process_starts"] = d.get("process_starts", len(runs))
+    return c
 
 
 def sd(xs):
@@ -334,6 +349,11 @@ def report(outdir):
             diff = ag["mean_w"] - r["mean_w"]
             lines.append(f"Agent minus {wl}: {diff:+.2f} W ({100 * diff / r['mean_w']:+.0f} %); agent SD "
                          f"{fmt_sd(ag['sd_w'])} W.")
+    se = summary.get("agent-session", {})
+    if se.get("mean_w") and ag.get("mean_w"):
+        diff = se["mean_w"] - ag["mean_w"]
+        lines.append(f"agent-session minus agent: {diff:+.2f} W ({100 * diff / ag['mean_w']:+.0f} %); SD across "
+                     f"repeats: agent {fmt_sd(ag['sd_w'])} W, agent-session {fmt_sd(se['sd_w'])} W.")
     lines += ["", "## Blocks", "",
               "| # | Workload | Start | Charge | Mean W | SD in block | Battery C | CPU max C | Mem MB start/end | "
               "Swap MB start/end | Work | Note |", "|---|---|---|---|---|---|---|---|---|---|---|---|"]
@@ -348,11 +368,13 @@ def report(outdir):
                 work += f", {d.get('step')} median {statistics.median(d['step_ms']):.0f} ms"
             if d.get("late"):
                 work += f", {d['late']} cycles started late"
-        elif b["workload"] == "agent":
-            runs = d.get("runs", [])
-            work = (f"{len(runs)} Pi runs ({sum(x.get('finished', False) for x in runs)} finished), "
-                    f"{sum(x['turns'] for x in runs)} turns, {sum(x['tool_calls'] for x in runs)} tool calls, "
-                    f"{sum(x['input_tokens'] for x in runs)} in / {sum(x['output_tokens'] for x in runs)} out tokens")
+        elif b["workload"] in AGENTS:
+            k = b["counts"] = agent_counts(d)
+            work = (f"{k['tasks']} tasks ({k['finished']} finished), {k['turns']} turns, "
+                    f"{k['tool_calls']} tool calls, {k['tool_errors']} tool errors, "
+                    f"{k['input_tokens']} in / {k['output_tokens']} out tokens, {k['retries']} retries, "
+                    f"{k['errors']} errors, 503 {'seen' if k['http_503'] else 'not seen'}, "
+                    f"{k['process_starts']} Pi start" + ("" if k["process_starts"] == 1 else "s"))
         else:
             work = "-"
         note = b.get("skipped") or b.get("invalid") or ""
@@ -429,7 +451,7 @@ def run_block(a, wl, tag, outdir, hb, state):
     # The tablet ends the block and resumes the input by itself (the block's own stop
     # unit, and the suspend deadline as a backstop), so a USB link drop on the Mac's
     # side changes nothing in the block; the runner collects the result afterwards.
-    if wl == "agent":
+    if wl in AGENTS:
         # Warm the endpoint before every agent block: after a recharge it has been idle
         # long enough that its first answer would take about 17 s.
         w = ctl("warmup", timeout=200, check=False)
@@ -534,10 +556,11 @@ def cmd_run(a):
         holder.start()
         hb.start()
         save()
-        agent_ok = "agent" in a.workloads
+        agents = ", ".join(w for w in a.workloads if w in AGENTS)
+        agent_ok = bool(agents)
         if agent_ok and not (a.agent_anytime or in_window(time.time(), 0)):
             agent_ok = False
-            meta["notes"].append("agent: skipped, outside the endpoint's window (00:00-08:00 local time)")
+            meta["notes"].append(f"{agents}: skipped, outside the endpoint's window (00:00-08:00 local time)")
         if agent_ok:
             w = ctl("warmup", timeout=200, check=False)
             if w.get("http") != "200":
@@ -546,18 +569,18 @@ def cmd_run(a):
             meta["notes"].append(f"endpoint warm-up: HTTP {w.get('http')} in {w.get('seconds')} s")
             if w.get("http") != "200":
                 agent_ok = False
-                meta["notes"].append("agent: skipped, the endpoint did not answer the warm-up")
+                meta["notes"].append(f"{agents}: skipped, the endpoint did not answer the warm-up")
         for rep in range(1, a.repeats + 1):
             for wl in a.workloads:
                 for attempt in range(1, a.max_attempts + 1):
                     tag = f"{wl}-{rep}" + (f"-try{attempt}" if attempt > 1 else "")
-                    if wl == "agent" and not agent_ok:
+                    if wl in AGENTS and not agent_ok:
                         meta["blocks"].append({"workload": wl, "tag": tag, "t": time.time(),
                                                "skipped": "skipped: endpoint not usable"})
                         break
                     try:
                         cap = wait_charge(a, hb, state)
-                        if wl == "agent" and not (a.agent_anytime or in_window(time.time(), a.seconds + a.settle + 120)):
+                        if wl in AGENTS and not (a.agent_anytime or in_window(time.time(), a.seconds + a.settle + 120)):
                             meta["blocks"].append({"workload": wl, "tag": tag, "t": time.time(),
                                                    "skipped": "skipped: would end outside 00:00-08:00"})
                             break
@@ -608,7 +631,9 @@ def main():
     sub = p.add_subparsers(dest="cmd", required=True)
     sub.add_parser("setup")
     r = sub.add_parser("run")
-    r.add_argument("--workloads", default="agent,replay,idle")
+    r.add_argument("--workloads", default="agent,replay,idle",
+                   help="comma-separated, run interleaved in the order given; names: agent, agent-session, "
+                        "idle, replay[+STEP][@PERIOD]")
     r.add_argument("--repeats", type=int, default=3)
     r.add_argument("--seconds", type=float, default=600)
     # 70-90: idle drew the same at 70-90 % as at 85-90 % (difference under the SD, #96).
