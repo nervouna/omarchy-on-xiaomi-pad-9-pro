@@ -228,6 +228,13 @@ systemctl enable loa-mdev loa-modules loa-subsys loa-usb-gadget loa-thp loa-boot
     loa-binder loa-servicemanager loa-suspend loa-audiohal loa-audio-relay loa-mic-relay loa-power-key \
     loa-splash-off loa-thermalhal loa-bthal loa-bluetooth bluetooth loa-sscrpcd loa-keyboard \
     loa-autobrightness loa-sleepd earlyoom loa-zram loa-cpufreq loa-batterysecret loa-pen systemd-pstore loa-crashdump loa-vendor-import loa-kernel-reinstall >/dev/null 2>&1
+# SSH is key-only (etc/ssh/sshd_config.d/10-loa.conf). A running sshd takes the
+# drop-in on reload, but only if the configuration passes sshd -t: a broken one
+# must leave the running sshd alone (it is the way back in). Never fails the install.
+if [ -d /run/systemd/system ] && systemctl is-active --quiet sshd; then
+    if sshd -t; then systemctl reload sshd || echo "could not reload sshd"
+    else echo "sshd -t failed: sshd not reloaded, it keeps its running configuration"; fi
+fi
 # avahi-daemon (mDNS, <hostname>.local): Omarchy's installer enables it; ours
 # doesn't run that installer. On its own: a missing unit fails the whole enable.
 systemctl enable avahi-daemon >/dev/null 2>&1 || echo "avahi-daemon not installed: no <hostname>.local"

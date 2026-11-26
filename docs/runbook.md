@@ -114,6 +114,9 @@ tools/install.sh images/omarchy-scratch-DATE.img.zst     # or omarchy-clean-DATE
 - The first boot of a from-scratch image takes ~30 s longer (vendor import).
 - The desktop appears in about a minute. `tools/tssh uptime` should answer: SSH runs over
   the USB gadget network, IPv6 link-local, with no Mac setup.
+  SSH is key-only (`PasswordAuthentication` and `KbdInteractiveAuthentication` are
+  off in `/etc/ssh/sshd_config.d/10-loa.conf`): root logs in with the install key,
+  and the `omarchy` user needs a public key in `~/.ssh/authorized_keys` first.
 - **(untested)** If the bootloader refuses `fastboot flash ramdump`, use the
   Magisk route instead:
   1. flash a Magisk-patched stock init_boot and boot Android;

@@ -154,6 +154,8 @@ tools/repartition.sh 64 --apply         # optional: 64 GiB root instead of 17
 You need your own SSH key in `keys/` (the repo ships none) and the stock
 `init_boot` from the official ROM in `images/`.
 
+SSH is key-only: password logins are closed (`/etc/ssh/sshd_config.d/10-loa.conf`). Root logs in over the USB cable with the key the install adds (`tools/tssh`). To log in as `omarchy`, add a public key to `/home/omarchy/.ssh/authorized_keys`.
+
 Away from the Mac, `sudo loa-update` on the tablet installs a signed release of these files over Wi-Fi ([docs/maintenance.md](docs/maintenance.md#over-the-air-updates-loa-update)).
 
 ## Going back to Android
