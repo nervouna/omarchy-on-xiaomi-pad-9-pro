@@ -10,6 +10,7 @@ import shutil
 import tempfile
 import time
 import unittest
+from unittest import mock
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 spec = importlib.util.spec_from_file_location("powertest", os.path.join(HERE, "powertest", "powertest.py"))
@@ -43,7 +44,7 @@ def run_json(workloads, blocks):
     }
 
 
-class Report(unittest.TestCase):
+class ReportCase(unittest.TestCase):
     def setUp(self):
         self.dir = tempfile.mkdtemp()
 
@@ -56,6 +57,12 @@ class Report(unittest.TestCase):
         rj = open(os.path.join(self.dir, "report.json")).read()
         return text, rj
 
+    def result_rows(self, text):
+        return [x.split("|")[1].strip() for x in text.split("## Result")[1].split("## Blocks")[0].splitlines()
+                if x.startswith("| ") and not x.startswith("| Workload")]
+
+
+class Report(ReportCase):
     def test_one_repeat_has_no_nan(self):
         replay = {"cycles": 19, "failed": 0, "hot_ms": [110], "reload_ms": [50]}
         agent = {"runs": [{"finished": True, "turns": 7, "tool_calls": 10, "input_tokens": 1000,
@@ -76,8 +83,7 @@ class Report(unittest.TestCase):
                         [block("idle", 1, 4.62), block("idle", 2, 4.63), block("agent", 1, 5.6, agent),
                          block("agent", 2, 5.7, agent)])
         text, _ = self.make(meta)
-        rows = [x.split("|")[1].strip() for x in text.split("## Result")[1].split("## Blocks")[0].splitlines()
-                if x.startswith("| ") and not x.startswith("| Workload")]
+        rows = self.result_rows(text)
         self.assertEqual(rows[0], "agent")
         self.assertEqual(rows[1:], ["idle", "replay"])
 
@@ -126,29 +132,20 @@ class AgentSessionWorkload(unittest.TestCase):
 
 
 def task(**kw):
-    t = {"finished": True, "turns": 4, "tool_calls": 5, "tool_errors": 0, "input_tokens": 1000,
-         "output_tokens": 300, "retries": 0, "errors": 0, "http_503": False}
-    t.update(kw)
-    return t
+    return {"finished": True, "turns": 4, "tool_calls": 5, "tool_errors": 0, "input_tokens": 1000,
+            "output_tokens": 300, "retries": 0, "errors": 0, "http_503": False, **kw}
 
 
-class ReportBothAgents(unittest.TestCase):
-    def setUp(self):
-        self.dir = tempfile.mkdtemp()
-        self.addCleanup(shutil.rmtree, self.dir)
-
+class ReportBothAgents(ReportCase):
     def test_side_by_side(self):
         agent = {"runs": [task(), task(), task(finished=False, tool_errors=1)], "failed": False}
         sess = {"runs": [task(), task()], "failed": False, "process_starts": 1}
         meta = run_json(["idle", "agent-session", "agent"],
                         [block("idle", 1, 4.6), block("agent", 1, 5.6, agent), block("agent-session", 1, 5.4, sess),
                          block("agent", 2, 5.8, agent), block("agent-session", 2, 5.5, sess)])
-        json.dump(meta, open(os.path.join(self.dir, "run.json"), "w"))
-        text = P.report(self.dir)
-        rj = json.load(open(os.path.join(self.dir, "report.json")))
-        rows = [x.split("|")[1].strip() for x in text.split("## Result")[1].split("## Blocks")[0].splitlines()
-                if x.startswith("| ") and not x.startswith("| Workload")]
-        self.assertEqual(rows, ["agent", "agent-session", "idle"])
+        text, rj = self.make(meta)
+        rj = json.loads(rj)
+        self.assertEqual(self.result_rows(text), ["agent", "agent-session", "idle"])
         self.assertIn("| agent-session | 2 | 5.45 |", text)
         self.assertIn("agent-session minus agent: -0.25 W", text)
         line = [x for x in text.splitlines() if x.startswith("| 3 | agent-session |")][0]
@@ -169,20 +166,33 @@ class ReportBothAgents(unittest.TestCase):
         # A run recorded before tool errors and retries were counted still reports.
         agent = {"runs": [{"finished": True, "turns": 7, "tool_calls": 10, "input_tokens": 1000,
                            "output_tokens": 700}], "failed": False}
-        json.dump(run_json(["agent"], [block("agent", 1, 5.6, agent)]), open(os.path.join(self.dir, "run.json"), "w"))
-        self.assertIn("1 tasks (1 finished)", P.report(self.dir))
+        self.assertIn("1 tasks (1 finished)", self.make(run_json(["agent"], [block("agent", 1, 5.6, agent)]))[0])
+
+
+def cmd_run(test, ctl, workloads, **fakes):
+    """P.cmd_run with its surroundings replaced (restored afterwards): run.json and ctl's calls."""
+    out = tempfile.mkdtemp()
+    test.addCleanup(shutil.rmtree, out)
+    calls = []
+
+    def recorded(args, timeout=180, check=True):
+        calls.append(args.split()[0])
+        return ctl(args)
+
+    fake_sys = type("S", (), {"platform": "linux", "exit": staticmethod(SystemExit)})
+    with mock.patch.multiple(P, ctl=recorded, preflight=lambda: {"hostname": "tablet"}, push=lambda: None,
+                             report=lambda d: "report", log=lambda m: None, sys=fake_sys, **fakes):
+        P.cmd_run(P.argparse.Namespace(
+            window="70-90", workloads=workloads, period=4, replay_step="none", out=out, seconds=600, settle=30,
+            repeats=1, max_attempts=1, backlight=820, heartbeat_timeout=300, agent_anytime=False))
+    return json.load(open(os.path.join(out, "run.json"))), calls
 
 
 class NightRule(unittest.TestCase):
     """The 00:00-08:00 rule holds for agent and agent-session alike."""
 
     def run_with(self, workloads, in_window):
-        out = tempfile.mkdtemp()
-        self.addCleanup(shutil.rmtree, out)
-        calls = []
-
-        def ctl(args, timeout=180, check=True):
-            calls.append(args.split()[0])
+        def ctl(args):
             if args.startswith("begin"):
                 return {"logdir": "/x", "conditions": {}}
             if args.startswith("warmup"):
@@ -201,23 +211,8 @@ class NightRule(unittest.TestCase):
             def is_alive(self):
                 return False
 
-        names = ("ctl", "preflight", "push", "report", "log", "sys", "Holder", "Heartbeat", "in_window",
-                 "wait_charge", "run_block")
-        saved = {n: getattr(P, n) for n in names}
-        fake_sys = type("S", (), {"platform": "linux", "exit": staticmethod(SystemExit)})
-        P.ctl, P.preflight, P.push = ctl, lambda: {"hostname": "tablet"}, lambda: None
-        P.report, P.log, P.sys, P.Holder, P.Heartbeat = lambda d: "report", lambda m: None, fake_sys, Idle, Idle
-        P.in_window, P.wait_charge = in_window, lambda a, hb, state: 80
-        P.run_block = lambda *x: self.fail("a block ran")
-        try:
-            a = P.argparse.Namespace(
-                window="70-90", workloads=workloads, period=4, replay_step="none", out=out, seconds=600, settle=30,
-                repeats=1, max_attempts=1, backlight=820, heartbeat_timeout=300, agent_anytime=False)
-            P.cmd_run(a)
-        finally:
-            for n, v in saved.items():
-                setattr(P, n, v)
-        return json.load(open(os.path.join(out, "run.json"))), calls
+        return cmd_run(self, ctl, workloads, Holder=Idle, Heartbeat=Idle, in_window=in_window,
+                       wait_charge=lambda a, hb, state: 80, run_block=lambda *x: self.fail("a block ran"))
 
     def test_outside_window_skips_both(self):
         for wls in ("agent-session", "agent,agent-session"):
@@ -235,29 +230,12 @@ class NightRule(unittest.TestCase):
 
 class RunBeginFails(unittest.TestCase):
     def test_failed_begin_keeps_the_run_record(self):
-        out = tempfile.mkdtemp()
-        self.addCleanup(shutil.rmtree, out)
-        calls = []
-
-        def ctl(args, timeout=180, check=True):
-            calls.append(args.split()[0])
+        def ctl(args):
             if args.startswith("begin"):
                 raise RuntimeError("ssh: connect failed")
             return {}
 
-        saved = {n: getattr(P, n) for n in ("ctl", "preflight", "push", "report", "log", "sys")}
-        fake_sys = type("S", (), {"platform": "linux", "exit": staticmethod(SystemExit)})
-        P.ctl, P.preflight, P.push = ctl, lambda: {"hostname": "tablet"}, lambda: None
-        P.report, P.log, P.sys = lambda d: "report", lambda m: None, fake_sys
-        try:
-            a = P.argparse.Namespace(
-                window="70-90", workloads="idle", period=4, replay_step="none", out=out, seconds=600, settle=30,
-                repeats=1, max_attempts=1, backlight=820, heartbeat_timeout=300)
-            P.cmd_run(a)
-        finally:
-            for n, v in saved.items():
-                setattr(P, n, v)
-        meta = json.load(open(os.path.join(out, "run.json")))
+        meta, calls = cmd_run(self, ctl, "idle")
         self.assertIn("end", meta)
         self.assertTrue(any("ssh: connect failed" in n for n in meta["notes"]))
         self.assertEqual(calls, ["begin", "end"])
